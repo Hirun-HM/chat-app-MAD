@@ -4,12 +4,11 @@ const path = require('path');
 const dbPath = path.join(__dirname, 'chatapp.db');
 const db = new sqlite3.Database(dbPath);
 
-console.log('📊 Chat App Database Inspector');
-console.log('===============================\n');
 
-// Function to display table contents
+
+
 function displayTable(tableName, callback) {
-  console.log(`🗂️  ${tableName.toUpperCase()} TABLE:`);
+  console.log(`  ${tableName.toUpperCase()} TABLE:`);
   console.log('-'.repeat(50));
   
   db.all(`SELECT * FROM ${tableName}`, (err, rows) => {
@@ -25,12 +24,12 @@ function displayTable(tableName, callback) {
   });
 }
 
-// Display all tables
+
 displayTable('users', () => {
   displayTable('chats', () => {
     displayTable('chat_participants', () => {
       displayTable('messages', () => {
-        // Close database connection
+        
         db.close((err) => {
           if (err) {
             console.error('Error closing database:', err.message);
