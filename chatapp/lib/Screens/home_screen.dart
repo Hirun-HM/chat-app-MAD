@@ -3,7 +3,9 @@ import 'package:chatapp/NewScreens/call_screen.dart';
 import 'package:chatapp/Pages/camera_page.dart';
 import 'package:chatapp/Pages/chat_page.dart';
 import 'package:chatapp/Services/chat_service.dart';
+import 'package:chatapp/Screens/settings_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:socket_io_client/socket_io_client.dart' as IO;
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, this.chatmodels, this.sourceChat});
@@ -19,12 +21,40 @@ class _HomeScreenState extends State<HomeScreen>
   TabController? _controller;
   List<ChatModel> chats = [];
   bool isLoading = true;
+  late IO.Socket socket;
 
   @override
   void initState() {
     super.initState();
     _controller = TabController(length: 4, vsync: this, initialIndex: 1);
+    connectSocket();
     loadChats();
+  }
+
+  void connectSocket() {
+    socket = IO.io(
+      "http://10.0.2.2:8000",
+      IO.OptionBuilder()
+          .setTransports(['websocket'])
+          .enableForceNew()
+          .enableAutoConnect()
+          .build(),
+    );
+
+    socket.onConnect((_) {
+      print("🏠 Home screen socket connected");
+      socket.emit("signin", widget.sourceChat?.id);
+
+      // Listen for chat list updates
+      socket.on("chat_list_update", (data) {
+        print("📋 Chat list update received: $data");
+        loadChats(); // Refresh the chat list
+      });
+    });
+
+    socket.onConnectError((data) {
+      print("❌ Home screen socket error: $data");
+    });
   }
 
   void loadChats() async {
@@ -80,6 +110,15 @@ class _HomeScreenState extends State<HomeScreen>
           PopupMenuButton<String>(
             onSelected: (value) {
               print(value);
+              if (value == "Settings") {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) =>
+                        SettingsScreen(sourceChat: widget.sourceChat),
+                  ),
+                );
+              }
             },
             itemBuilder: (context) {
               return [
@@ -142,5 +181,15 @@ class _HomeScreenState extends State<HomeScreen>
         ],
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    if (socket.connected) {
+      socket.disconnect();
+    }
+    socket.dispose();
+    _controller?.dispose();
+    super.dispose();
   }
 }

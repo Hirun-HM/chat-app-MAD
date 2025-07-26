@@ -97,4 +97,85 @@ class ChatService {
       return false;
     }
   }
+
+  // Upload user avatar
+  static Future<Map<String, dynamic>?> uploadUserAvatar(
+    int userId,
+    String imagePath,
+  ) async {
+    try {
+      var request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$baseUrl/users/$userId/avatar'),
+      );
+
+      request.files.add(await http.MultipartFile.fromPath('avatar', imagePath));
+
+      var response = await request.send();
+
+      if (response.statusCode == 200) {
+        final responseBody = await response.stream.bytesToString();
+        return json.decode(responseBody);
+      } else {
+        print('Failed to upload avatar: ${response.statusCode}');
+        return null;
+      }
+    } catch (e) {
+      print('Error uploading avatar: $e');
+      return null;
+    }
+  }
+
+  // Upload group icon
+  static Future<Map<String, dynamic>?> uploadGroupIcon(
+    int groupId,
+    String imagePath,
+  ) async {
+    try {
+      var request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$baseUrl/groups/$groupId/icon'),
+      );
+
+      request.files.add(await http.MultipartFile.fromPath('icon', imagePath));
+
+      var response = await request.send();
+
+      if (response.statusCode == 200) {
+        final responseBody = await response.stream.bytesToString();
+        return json.decode(responseBody);
+      } else {
+        print('Failed to upload group icon: ${response.statusCode}');
+        return null;
+      }
+    } catch (e) {
+      print('Error uploading group icon: $e');
+      return null;
+    }
+  }
+
+  // Delete a chat
+  static Future<Map<String, dynamic>?> deleteChat(
+    int chatId,
+    int userId,
+  ) async {
+    try {
+      final response = await http.delete(
+        Uri.parse('$baseUrl/chats/$chatId/$userId'),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode == 200) {
+        final result = json.decode(response.body);
+        print('✅ Chat action completed: ${result['action']}');
+        return result;
+      } else {
+        print('Failed to delete chat: ${response.statusCode}');
+        return null;
+      }
+    } catch (e) {
+      print('Error deleting chat: $e');
+      return null;
+    }
+  }
 }

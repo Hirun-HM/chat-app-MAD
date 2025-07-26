@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import '../Model/message_model.dart';
 
 class OwnMessageCard extends StatelessWidget {
-  const OwnMessageCard({super.key, this.message, this.time});
+  const OwnMessageCard({super.key, this.message, this.time, this.messageModel});
   final String? message;
   final String? time;
+  final MessageModel? messageModel;
 
   @override
   Widget build(BuildContext context) {
@@ -29,7 +31,7 @@ class OwnMessageCard extends StatelessWidget {
                   top: 10,
                   bottom: 20,
                 ),
-                child: Text(message ?? ''),
+                child: Text(message ?? messageModel?.message ?? ''),
               ),
               Positioned(
                 bottom: 4,
@@ -37,11 +39,11 @@ class OwnMessageCard extends StatelessWidget {
                 child: Row(
                   children: [
                     Text(
-                      time ?? '00:00',
+                      time ?? messageModel?.time ?? '00:00',
                       style: TextStyle(fontSize: 12, color: Colors.grey),
                     ),
                     SizedBox(width: 5),
-                    Icon(Icons.done_all, size: 20, color: Colors.blue),
+                    _buildStatusIcon(),
                   ],
                 ),
               ),
@@ -50,5 +52,22 @@ class OwnMessageCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Widget _buildStatusIcon() {
+    if (messageModel == null) {
+      return Icon(Icons.done, size: 16, color: Colors.grey);
+    }
+
+    if (messageModel!.isRead) {
+      // Blue double tick for read
+      return Icon(Icons.done_all, size: 16, color: Colors.blue);
+    } else if (messageModel!.isDelivered) {
+      // Gray double tick for delivered but not read
+      return Icon(Icons.done_all, size: 16, color: Colors.grey);
+    } else {
+      // Single gray tick for sent but not delivered
+      return Icon(Icons.done, size: 16, color: Colors.grey);
+    }
   }
 }

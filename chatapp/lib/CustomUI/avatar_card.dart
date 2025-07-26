@@ -38,7 +38,16 @@ class AvatarCard extends StatelessWidget {
             ],
           ),
           SizedBox(height: 2),
-          Text(contact.name ?? '', style: TextStyle(fontSize: 11)),
+          Container(
+            width: 50,
+            child: Text(
+              contact.name ?? '',
+              style: TextStyle(fontSize: 11),
+              textAlign: TextAlign.center,
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
+            ),
+          ),
         ],
       ),
     );

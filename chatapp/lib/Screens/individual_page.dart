@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:chatapp/CustomUI/own_file_card.dart';
 import 'package:chatapp/CustomUI/own_message_card.dart';
@@ -86,25 +85,69 @@ class _IndividualPageState extends State<IndividualPage> {
       print("✅ Socket connected with ID: ${socket.id}");
       socket.emit("signin", widget.sourceChat?.id);
 
-      socket.emit("get_chat_history", {
-        "sourceId": widget.sourceChat?.id,
-        "targetId": widget.chatModel?.id,
+      // Join the specific chat room
+      if (widget.chatModel?.id != null) {
+        socket.emit("join_chat", {
+          "chatId": widget.chatModel!.id,
+          "userId": widget.sourceChat?.id,
+        });
+      }
+
+      // Get chat history
+      socket.emit("get_chat_history_by_id", {
+        "chatId": widget.chatModel?.id,
+        "userId": widget.sourceChat?.id,
       });
 
       socket.on("message", (msg) {
         print("📨 Received message: $msg");
-        setMessage("destination", msg['message'], msg['path'] ?? '');
+        // Only add message if it's not from current user to avoid duplicates
+        if (msg['senderId'] != widget.sourceChat?.id) {
+          setMessage(
+            "destination",
+            msg['message'],
+            msg['path'] ?? '',
+            msg['id'],
+          );
+        }
+
+        // Emit read receipt immediately when message is received
+        if (msg['id'] != null) {
+          socket.emit("message_read", {
+            "messageId": msg['id'],
+            "userId": widget.sourceChat?.id,
+            "chatId": widget.chatModel?.id,
+          });
+        }
       });
 
       // Handle notifications (when user is not in the chat)
       socket.on("notification", (data) {
         print("🔔 Received notification: $data");
-
         showNotificationSnackBar(data['sender'], data['message']);
+      });
+
+      // Handle message read receipts
+      socket.on("message_read_receipt", (data) {
+        print("👁️ Message read receipt: $data");
+        updateMessageReadStatus(data['messageId'], true);
       });
 
       socket.on("message_sent", (data) {
         print("✅ Message sent confirmation: ${data['id']}");
+        // Update the local message with the server-assigned ID and mark as delivered
+        if (data['id'] != null) {
+          setState(() {
+            // Find the last message sent by current user and update it
+            for (int i = messages.length - 1; i >= 0; i--) {
+              if (messages[i].type == "source" && messages[i].id == null) {
+                messages[i].id = data['id'];
+                messages[i].isDelivered = true;
+                break;
+              }
+            }
+          });
+        }
       });
 
       socket.on("chat_history", (data) {
@@ -115,10 +158,15 @@ class _IndividualPageState extends State<IndividualPage> {
           messages.clear();
           for (var msg in data['messages']) {
             MessageModel messageModel = MessageModel(
+              id: msg['id'],
               type: msg['messageType'],
               message: msg['message'],
               path: msg['path'] ?? '',
               time: DateTime.now().toString().substring(10, 16),
+              isDelivered: true, // Assume delivered if in history
+              isRead:
+                  msg['messageType'] ==
+                  'destination', // Mark as read if it's from others
             );
             messages.add(messageModel);
           }
@@ -138,27 +186,51 @@ class _IndividualPageState extends State<IndividualPage> {
     print("🔄 Connecting to socket...");
   }
 
-  void sendMessage(String message, int sourceId, int targetId, String path) {
+  void sendMessage(String message, int sourceId, int chatId, String path) {
+    // Add message to local UI immediately for instant feedback
     setMessage("source", message, path);
-    socket.emit("message", {
+
+    // Send message via Socket.IO using the new event
+    socket.emit("send_chat_message", {
       "message": message,
-      "sourceId": sourceId,
-      "targetId": targetId,
+      "senderId": sourceId,
+      "chatId": chatId,
       "path": path,
     });
   }
 
-  void setMessage(String type, String message, String path) {
+  void setMessage(String type, String message, String path, [int? messageId]) {
     MessageModel messageModel = MessageModel(
+      id: messageId,
       type: type,
       message: message,
       path: path,
       time: DateTime.now().toString().substring(10, 16),
+      isDelivered: type == "source" ? false : true,
+      isRead: type == "destination" ? true : false,
     );
     setState(() {
-      setState(() {
-        messages.add(messageModel);
-      });
+      messages.add(messageModel);
+    });
+  }
+
+  // Update message read status
+  void updateMessageReadStatus(int messageId, bool isRead) {
+    setState(() {
+      final messageIndex = messages.indexWhere((msg) => msg.id == messageId);
+      if (messageIndex != -1) {
+        messages[messageIndex].isRead = isRead;
+      }
+    });
+  }
+
+  // Update message delivery status
+  void updateMessageDeliveryStatus(int messageId, bool isDelivered) {
+    setState(() {
+      final messageIndex = messages.indexWhere((msg) => msg.id == messageId);
+      if (messageIndex != -1) {
+        messages[messageIndex].isDelivered = isDelivered;
+      }
     });
   }
 
@@ -406,7 +478,7 @@ class _IndividualPageState extends State<IndividualPage> {
                             );
                           } else {
                             return OwnMessageCard(
-                              message: messages[index].message,
+                              messageModel: messages[index],
                             );
                           }
                         } else {

@@ -45,10 +45,14 @@ class ContactCard extends StatelessWidget {
         title: Text(
           contact?.name ?? 'Unknown',
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+          overflow: TextOverflow.ellipsis,
+          maxLines: 1,
         ),
         subtitle: Text(
           contact?.status ?? 'No status',
           style: TextStyle(color: Colors.grey[600], fontSize: 16),
+          overflow: TextOverflow.ellipsis,
+          maxLines: 1,
         ),
       ),
     );

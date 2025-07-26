@@ -5,8 +5,17 @@ class MessageModel {
   String? message;
   String path;
   String? time;
-  MessageModel({this.type, this.message, required this.path,
-    this.time}) {
-    ;
-  }
+  int? id;
+  bool isRead;
+  bool isDelivered;
+
+  MessageModel({
+    this.type,
+    this.message,
+    required this.path,
+    this.time,
+    this.id,
+    this.isRead = false,
+    this.isDelivered = false,
+  });
 }

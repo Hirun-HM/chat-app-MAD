@@ -1,10 +1,11 @@
 import 'package:chatapp/CustomUI/avatar_card.dart';
-import 'package:chatapp/CustomUI/button_card.dart';
 import 'package:chatapp/CustomUI/contact_card.dart';
 import 'package:chatapp/Model/chat_model.dart';
 import 'package:chatapp/Services/chat_service.dart';
 import 'package:chatapp/Screens/home_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
 
 class CreateGroup extends StatefulWidget {
   const CreateGroup({super.key, this.sourceChat});
@@ -21,6 +22,8 @@ class _CreateGroupState extends State<CreateGroup> {
   List<Map<String, dynamic>> allUsers = [];
   bool isLoading = true;
   TextEditingController groupNameController = TextEditingController();
+  String? groupIconPath;
+  ImagePicker _picker = ImagePicker();
 
   @override
   void initState() {
@@ -105,6 +108,20 @@ class _CreateGroupState extends State<CreateGroup> {
       Navigator.pop(context); // Close loading dialog
 
       if (result != null && result['success'] == true) {
+        // Upload group icon if selected
+        if (groupIconPath != null && result['groupId'] != null) {
+          try {
+            await ChatService.uploadGroupIcon(
+              result['groupId'],
+              groupIconPath!,
+            );
+            print('✅ Group icon uploaded successfully');
+          } catch (e) {
+            print('⚠️ Error uploading group icon: $e');
+            // Don't fail the entire process if icon upload fails
+          }
+        }
+
         // Show success message
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -143,6 +160,75 @@ class _CreateGroupState extends State<CreateGroup> {
           backgroundColor: Colors.red,
         ),
       );
+    }
+  }
+
+  void _showImagePickerDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Select Group Icon'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: Icon(Icons.photo_library),
+                title: Text('Choose from Gallery'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _pickImageFromGallery();
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.camera_alt),
+                title: Text('Take Photo'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _pickImageFromCamera();
+                },
+              ),
+              if (groupIconPath != null)
+                ListTile(
+                  leading: Icon(Icons.delete),
+                  title: Text('Remove Photo'),
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    setState(() {
+                      groupIconPath = null;
+                    });
+                  },
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _pickImageFromGallery() async {
+    try {
+      final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
+      if (image != null) {
+        setState(() {
+          groupIconPath = image.path;
+        });
+      }
+    } catch (e) {
+      print('Error picking image from gallery: $e');
+    }
+  }
+
+  Future<void> _pickImageFromCamera() async {
+    try {
+      final XFile? image = await _picker.pickImage(source: ImageSource.camera);
+      if (image != null) {
+        setState(() {
+          groupIconPath = image.path;
+        });
+      }
+    } catch (e) {
+      print('Error picking image from camera: $e');
     }
   }
 
@@ -196,13 +282,48 @@ class _CreateGroupState extends State<CreateGroup> {
                       color: Colors.white,
                       child: Row(
                         children: [
-                          CircleAvatar(
-                            radius: 25,
-                            backgroundColor: Colors.grey[300],
-                            child: Icon(
-                              Icons.group,
-                              color: Colors.grey[600],
-                              size: 30,
+                          GestureDetector(
+                            onTap: () {
+                              // TODO: Implement image picker for group icon
+                              _showImagePickerDialog();
+                            },
+                            child: Stack(
+                              children: [
+                                CircleAvatar(
+                                  radius: 25,
+                                  backgroundColor: Colors.grey[300],
+                                  child: groupIconPath != null
+                                      ? ClipOval(
+                                          child: Image.file(
+                                            File(groupIconPath!),
+                                            width: 50,
+                                            height: 50,
+                                            fit: BoxFit.cover,
+                                          ),
+                                        )
+                                      : Icon(
+                                          Icons.group,
+                                          color: Colors.grey[600],
+                                          size: 30,
+                                        ),
+                                ),
+                                Positioned(
+                                  bottom: 0,
+                                  right: 0,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: Color(0xff075E54),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    padding: EdgeInsets.all(4),
+                                    child: Icon(
+                                      Icons.camera_alt,
+                                      color: Colors.white,
+                                      size: 12,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                           SizedBox(width: 16),

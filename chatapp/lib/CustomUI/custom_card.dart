@@ -1,13 +1,20 @@
 import 'package:chatapp/Model/chat_model.dart';
 import 'package:chatapp/Screens/individual_page.dart';
+import 'package:chatapp/Services/chat_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 
 class CustomCard extends StatelessWidget {
-  const CustomCard({super.key, this.chatModel, this.sourceChat});
+  const CustomCard({
+    super.key,
+    this.chatModel,
+    this.sourceChat,
+    this.onChatDeleted,
+  });
 
   final ChatModel? chatModel;
   final ChatModel? sourceChat;
+  final VoidCallback? onChatDeleted;
   @override
   Widget build(BuildContext context) {
     return InkWell(
@@ -19,6 +26,9 @@ class CustomCard extends StatelessWidget {
                 IndividualPage(chatModel: chatModel, sourceChat: sourceChat),
           ),
         );
+      },
+      onLongPress: () {
+        _showDeleteDialog(context);
       },
       child: Column(
         children: [
@@ -88,5 +98,80 @@ class CustomCard extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  void _showDeleteDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Delete Chat'),
+          content: Text(
+            chatModel?.isGroup == true
+                ? 'Are you sure you want to ${chatModel?.name == sourceChat?.name ? "delete" : "leave"} this group?'
+                : 'Are you sure you want to delete this chat with ${chatModel?.name}?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () async {
+                Navigator.of(context).pop();
+                await _deleteChat(context);
+              },
+              child: Text(
+                chatModel?.isGroup == true &&
+                        chatModel?.name != sourceChat?.name
+                    ? 'Leave'
+                    : 'Delete',
+                style: TextStyle(color: Colors.red),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _deleteChat(BuildContext context) async {
+    if (chatModel?.id == null || sourceChat?.id == null) return;
+
+    try {
+      final result = await ChatService.deleteChat(
+        chatModel!.id!,
+        sourceChat!.id!,
+      );
+
+      if (result != null && result['success'] == true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              result['action'] == 'left_group'
+                  ? 'Left group successfully'
+                  : 'Chat deleted successfully',
+            ),
+            backgroundColor: Colors.green,
+          ),
+        );
+
+        // Notify parent to refresh
+        if (onChatDeleted != null) {
+          onChatDeleted!();
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to delete chat'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+      );
+    }
   }
 }

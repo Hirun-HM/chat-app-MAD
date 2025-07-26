@@ -5,6 +5,35 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
+const multer = require('multer');
+const fs = require('fs');
+
+// Configure multer for file uploads
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const uploadDir = path.join(__dirname, 'public', 'uploads');
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueName = uuidv4() + path.extname(file.originalname);
+    cb(null, uniqueName);
+  }
+});
+
+const upload = multer({ 
+  storage: storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed!'), false);
+    }
+  }
+});
 
 const app = express();
 const server = http.createServer(app);
@@ -324,6 +353,104 @@ io.on('connection', (socket) => {
     });
   });
 
+  // Handle getting chat history by chat ID
+  socket.on('get_chat_history_by_id', (data) => {
+    const { chatId, userId } = data;
+    console.log(`📜 Getting chat history for chat ${chatId} by user ${userId}`);
+    
+    if (!chatId || !userId) {
+      console.error('❌ Invalid chat history request:', data);
+      return;
+    }
+    
+    // Verify user is a participant in this chat
+    db.get(
+      "SELECT 1 FROM chat_participants WHERE chat_id = ? AND user_id = ?",
+      [chatId, userId],
+      (err, participant) => {
+        if (err) {
+          console.error('Error checking chat participant:', err.message);
+          return;
+        }
+        
+        if (!participant) {
+          console.error(`❌ User ${userId} is not a participant in chat ${chatId}`);
+          return;
+        }
+        
+        // Get all messages for this chat
+        db.all(
+          `SELECT m.*, u.name as sender_name 
+           FROM messages m
+           JOIN users u ON m.sender_id = u.id
+           WHERE m.chat_id = ?
+           ORDER BY m.sent_at ASC`,
+          [chatId],
+          (err, messages) => {
+            if (err) {
+              console.error('Error getting chat history:', err.message);
+              return;
+            }
+            
+            console.log(`📤 Sending ${messages.length} messages to user ${userId} for chat ${chatId}`);
+            socket.emit('chat_history', {
+              chatId: chatId,
+              messages: messages.map(msg => ({
+                id: msg.id,
+                message: msg.message_text,
+                path: msg.file_path || '',
+                sender: msg.sender_name,
+                senderId: msg.sender_id,
+                sentAt: msg.sent_at,
+                type: msg.message_type,
+                // Determine if this message is from the current user
+                messageType: msg.sender_id === userId ? 'source' : 'destination'
+              }))
+            });
+          }
+        );
+      }
+    );
+  });
+
+  // Handle joining a specific chat room
+  socket.on('join_chat', (data) => {
+    const { chatId, userId } = data;
+    console.log(`👤 User ${userId} joining chat room: chat_${chatId}`);
+    
+    if (!chatId || !userId) {
+      console.error('❌ Invalid join chat request:', data);
+      return;
+    }
+    
+    // Verify user is a participant in this chat
+    db.get(
+      "SELECT 1 FROM chat_participants WHERE chat_id = ? AND user_id = ?",
+      [chatId, userId],
+      (err, participant) => {
+        if (err) {
+          console.error('Error checking chat participant:', err.message);
+          return;
+        }
+        
+        if (!participant) {
+          console.error(`❌ User ${userId} is not authorized to join chat ${chatId}`);
+          return;
+        }
+        
+        // Join the chat room
+        socket.join(`chat_${chatId}`);
+        console.log(`✅ User ${userId} joined chat room: chat_${chatId}`);
+        
+        // Notify other users in the chat
+        socket.to(`chat_${chatId}`).emit('user_joined_chat', {
+          userId: userId,
+          chatId: chatId
+        });
+      }
+    );
+  });
+
   // Handle sending messages
   socket.on('message', (data) => {
     console.log('📨 Received message:', data);
@@ -426,6 +553,14 @@ io.on('connection', (socket) => {
                   chatId: chatId
                 });
                 
+                // Update sender's chat list too
+                socket.emit('chat_list_update', {
+                  chatId: chatId,
+                  lastMessage: messageData.message_text,
+                  lastSender: messageData.sender_name,
+                  time: messageData.sent_at
+                });
+                
                 // Update chat's last message timestamp
                 db.run(
                   "UPDATE chats SET updated_at = datetime('now') WHERE id = ?",
@@ -437,6 +572,112 @@ io.on('connection', (socket) => {
         );
       }
     });
+  });
+
+  // Handle sending messages to a specific chat
+  socket.on('send_chat_message', (data) => {
+    console.log('📨 Received chat message:', data);
+    
+    const { message, senderId, chatId, path } = data;
+    
+    if (!message || !senderId || !chatId) {
+      console.error('❌ Invalid message data:', data);
+      return;
+    }
+    
+    // Save message to database
+    const messageType = path && path !== '' ? getMessageType(path) : 'text';
+    
+    db.run(
+      `INSERT INTO messages (chat_id, sender_id, message_text, message_type, file_path, sent_at) 
+       VALUES (?, ?, ?, ?, ?, datetime('now'))`,
+      [chatId, senderId, message, messageType, path || ''],
+      function(err) {
+        if (err) {
+          console.error('Error saving message:', err.message);
+          return;
+        }
+        
+        console.log(`✅ Message saved with ID: ${this.lastID}`);
+        
+        // Get the complete message data
+        db.get(
+          `SELECT m.*, u.name as sender_name 
+           FROM messages m 
+           JOIN users u ON m.sender_id = u.id 
+           WHERE m.id = ?`,
+          [this.lastID],
+          (err, messageData) => {
+            if (err) {
+              console.error('Error retrieving message:', err.message);
+              return;
+            }
+            
+            // Broadcast message to all participants in the chat room
+            io.to(`chat_${chatId}`).emit('message', {
+              id: messageData.id,
+              message: messageData.message_text,
+              path: messageData.file_path || '',
+              sender: messageData.sender_name,
+              senderId: messageData.sender_id,
+              sentAt: messageData.sent_at,
+              type: messageData.message_type,
+              chatId: chatId
+            });
+            
+            // Confirm message sent to sender
+            socket.emit('message_sent', {
+              id: messageData.id,
+              message: messageData.message_text,
+              path: messageData.file_path || '',
+              sentAt: messageData.sent_at,
+              chatId: chatId
+            });
+            
+            // Get all participants in this chat for notifications and chat list updates
+            getChatParticipants(chatId, (participants) => {
+              participants.forEach(participantId => {
+                const participantSocketId = connectedUsers.get(participantId);
+                if (participantSocketId) {
+                  const participantSocket = io.sockets.sockets.get(participantSocketId);
+                  if (participantSocket) {
+                    // Check if user is currently in this chat
+                    const isInChat = participantSocket.currentChatId === chatId;
+                    
+                    // Send notification if user is not in this chat
+                    if (!isInChat && participantId !== senderId) {
+                      participantSocket.emit('notification', {
+                        type: 'new_message',
+                        chatId: chatId,
+                        sender: messageData.sender_name,
+                        message: messageData.message_text,
+                        sentAt: messageData.sent_at
+                      });
+                      
+                      console.log(`🔔 Notification sent to user ${participantId} from ${messageData.sender_name}`);
+                    }
+                    
+                    // Always send chat list update
+                    participantSocket.emit('chat_list_update', {
+                      chatId: chatId,
+                      lastMessage: messageData.message_text,
+                      lastSender: messageData.sender_name,
+                      time: messageData.sent_at
+                    });
+                  }
+                }
+              });
+            });
+            
+            // Update chat's last message timestamp
+            db.run(
+              "UPDATE chats SET updated_at = datetime('now') WHERE id = ?",
+              [chatId]
+            );
+          }
+        );
+      }
+    );
   });
 
   // Handle disconnection
@@ -457,6 +698,53 @@ io.on('connection', (socket) => {
         }
       );
     }
+  });
+
+  // Handle message read status update
+  socket.on('message_read', (data) => {
+    const { messageId, userId, chatId } = data;
+    console.log(`👁️ Message ${messageId} read by user ${userId} in chat ${chatId}`);
+    
+    // Update message read status
+    db.run(
+      `INSERT OR IGNORE INTO message_read_status (message_id, user_id, read_at) 
+       VALUES (?, ?, datetime('now'))`,
+      [messageId, userId],
+      function(err) {
+        if (err) {
+          console.error('Error updating message read status:', err.message);
+        } else {
+          console.log(`✅ Message ${messageId} marked as read by user ${userId}`);
+          
+          // Notify the sender about the read status
+          db.get(
+            "SELECT sender_id FROM messages WHERE id = ?",
+            [messageId],
+            (err, message) => {
+              if (err) {
+                console.error('Error getting message sender:', err.message);
+                return;
+              }
+              
+              if (message && message.sender_id !== userId) {
+                const senderSocketId = connectedUsers.get(message.sender_id);
+                if (senderSocketId) {
+                  const senderSocket = io.sockets.sockets.get(senderSocketId);
+                  if (senderSocket) {
+                    senderSocket.emit('message_read_receipt', {
+                      messageId: messageId,
+                      readBy: userId,
+                      chatId: chatId,
+                      readAt: new Date().toISOString()
+                    });
+                  }
+                }
+              }
+            }
+          );
+        }
+      }
+    );
   });
 });
 
@@ -508,51 +796,70 @@ function getUserChats(userId, callback) {
 }
 
 function findOrCreateChat(sourceId, targetId, callback) {
-  // First, try to find existing individual chat between these users
-  db.get(
-    `SELECT c.id 
-     FROM chats c
-     JOIN chat_participants cp1 ON c.id = cp1.chat_id
-     JOIN chat_participants cp2 ON c.id = cp2.chat_id
-     WHERE c.type = 'individual' 
-     AND cp1.user_id = ? 
-     AND cp2.user_id = ?
-     AND c.id IN (
-       SELECT chat_id 
-       FROM chat_participants 
-       GROUP BY chat_id 
-       HAVING COUNT(*) = 2
-     )`,
+  // First validate that both users exist
+  db.all(
+    "SELECT id FROM users WHERE id IN (?, ?)",
     [sourceId, targetId],
-    (err, row) => {
+    (err, users) => {
       if (err) {
-        console.error('Error finding chat:', err.message);
+        console.error('Error validating users:', err.message);
         callback(null);
-      } else if (row) {
-        // Chat exists
-        callback(row.id);
-      } else {
-        // Create new chat
-        db.run(
-          "INSERT INTO chats (type, created_by) VALUES ('individual', ?)",
-          [sourceId],
-          function(err) {
-            if (err) {
-              console.error('Error creating chat:', err.message);
-              callback(null);
-            } else {
-              const chatId = this.lastID;
-              
-              // Add both participants
-              db.run("INSERT INTO chat_participants (chat_id, user_id) VALUES (?, ?)", [chatId, sourceId]);
-              db.run("INSERT INTO chat_participants (chat_id, user_id) VALUES (?, ?)", [chatId, targetId]);
-              
-              console.log(`✅ Created new chat with ID: ${chatId}`);
-              callback(chatId);
-            }
-          }
-        );
+        return;
       }
+      
+      if (users.length !== 2) {
+        console.error(`Invalid users: ${sourceId}, ${targetId}. Found: ${users.length} valid users`);
+        callback(null);
+        return;
+      }
+      
+      // Now find or create chat between valid users
+      db.get(
+        `SELECT c.id 
+         FROM chats c
+         JOIN chat_participants cp1 ON c.id = cp1.chat_id
+         JOIN chat_participants cp2 ON c.id = cp2.chat_id
+         WHERE c.type = 'individual' 
+         AND cp1.user_id = ? 
+         AND cp2.user_id = ?
+         AND c.id IN (
+           SELECT chat_id 
+           FROM chat_participants 
+           GROUP BY chat_id 
+           HAVING COUNT(*) = 2
+         )`,
+        [sourceId, targetId],
+        (err, row) => {
+          if (err) {
+            console.error('Error finding chat:', err.message);
+            callback(null);
+          } else if (row) {
+            // Chat exists
+            callback(row.id);
+          } else {
+            // Create new chat
+            db.run(
+              "INSERT INTO chats (type, created_by) VALUES ('individual', ?)",
+              [sourceId],
+              function(err) {
+                if (err) {
+                  console.error('Error creating chat:', err.message);
+                  callback(null);
+                } else {
+                  const chatId = this.lastID;
+                  
+                  // Add both participants
+                  db.run("INSERT INTO chat_participants (chat_id, user_id) VALUES (?, ?)", [chatId, sourceId]);
+                  db.run("INSERT INTO chat_participants (chat_id, user_id) VALUES (?, ?)", [chatId, targetId]);
+                  
+                  console.log(`✅ Created new chat with ID: ${chatId}`);
+                  callback(chatId);
+                }
+              }
+            );
+          }
+        }
+      );
     }
   );
 }
@@ -741,6 +1048,116 @@ app.post('/api/messages/mark-read/:chatId/:userId', (req, res) => {
   );
 });
 
+// REST API endpoint for sending messages (for testing purposes)
+app.post('/api/messages', (req, res) => {
+  const { chatId, senderId, messageText, messageType = 'text', filePath = '' } = req.body;
+  
+  if (!chatId || !senderId || !messageText) {
+    return res.status(400).json({ error: 'Missing required fields: chatId, senderId, messageText' });
+  }
+  
+  // Save message to database
+  db.run(
+    `INSERT INTO messages (chat_id, sender_id, message_text, message_type, file_path, sent_at) 
+     VALUES (?, ?, ?, ?, ?, datetime('now'))`,
+    [chatId, senderId, messageText, messageType, filePath],
+    function(err) {
+      if (err) {
+        console.error('Error saving message:', err.message);
+        return res.status(500).json({ error: 'Failed to save message' });
+      }
+      
+      // Get the complete message data
+      db.get(
+        `SELECT m.*, u.name as sender_name 
+         FROM messages m 
+         JOIN users u ON m.sender_id = u.id 
+         WHERE m.id = ?`,
+        [this.lastID],
+        (err, messageData) => {
+          if (err) {
+            console.error('Error retrieving message:', err.message);
+            return res.status(500).json({ error: 'Failed to retrieve message' });
+          }
+          
+          // Update chat's last message timestamp
+          db.run(
+            "UPDATE chats SET updated_at = datetime('now') WHERE id = ?",
+            [chatId],
+            (err) => {
+              if (err) {
+                console.error('Error updating chat timestamp:', err.message);
+              }
+            }
+          );
+          
+          // Get all participants in this chat for real-time updates
+          getChatParticipants(chatId, (participants) => {
+            // Broadcast message to all connected participants
+            participants.forEach(participantId => {
+              const participantSocketId = connectedUsers.get(participantId);
+              if (participantSocketId) {
+                const participantSocket = io.sockets.sockets.get(participantSocketId);
+                if (participantSocket) {
+                  // Check if user is currently in this chat
+                  const isInChat = participantSocket.currentChatId === chatId;
+                  
+                  if (participantId !== senderId) {
+                    // Send message to other participants
+                    participantSocket.emit('message', {
+                      id: messageData.id,
+                      message: messageData.message_text,
+                      path: messageData.file_path || '',
+                      sender: messageData.sender_name,
+                      senderId: messageData.sender_id,
+                      sentAt: messageData.sent_at,
+                      type: messageData.message_type,
+                      chatId: chatId
+                    });
+                    
+                    // Send notification if user is not in this chat
+                    if (!isInChat) {
+                      participantSocket.emit('notification', {
+                        type: 'new_message',
+                        chatId: chatId,
+                        sender: messageData.sender_name,
+                        message: messageData.message_text,
+                        sentAt: messageData.sent_at
+                      });
+                    }
+                  }
+                  
+                  // Update chat list for all participants
+                  participantSocket.emit('chat_list_update', {
+                    chatId: chatId,
+                    lastMessage: messageData.message_text,
+                    lastSender: messageData.sender_name,
+                    time: messageData.sent_at
+                  });
+                }
+              }
+            });
+          });
+          
+          res.json({
+            success: true,
+            message: {
+              id: messageData.id,
+              chat_id: messageData.chat_id,
+              sender_id: messageData.sender_id,
+              message_text: messageData.message_text,
+              message_type: messageData.message_type,
+              file_path: messageData.file_path,
+              sent_at: messageData.sent_at,
+              sender_name: messageData.sender_name
+            }
+          });
+        }
+      );
+    }
+  );
+});
+
 // REST API endpoints
 app.get('/api/users', (req, res) => {
   db.all("SELECT id, name, phone, avatar, status FROM users", (err, rows) => {
@@ -834,6 +1251,132 @@ app.get('/api/messages/:chatId', (req, res) => {
       } else {
         res.json(rows);
       }
+    }
+  );
+});
+
+// API endpoint to upload user avatar
+app.post('/api/users/:userId/avatar', upload.single('avatar'), (req, res) => {
+  const userId = req.params.userId;
+  const file = req.file;
+  
+  if (!file) {
+    return res.status(400).json({ error: 'No file uploaded' });
+  }
+  
+  // Update user avatar in the database
+  db.run(
+    "UPDATE users SET avatar = ? WHERE id = ?",
+    [file.filename, userId],
+    function(err) {
+      if (err) {
+        console.error('Error updating avatar:', err.message);
+        res.status(500).json({ error: 'Failed to update avatar' });
+      } else {
+        console.log(`✅ Updated avatar for user ID: ${userId}`);
+        res.json({
+          success: true,
+          avatar: file.filename
+        });
+      }
+    }
+  );
+});
+
+// Group icon upload endpoint
+app.post('/api/groups/:groupId/icon', upload.single('icon'), (req, res) => {
+  const groupId = req.params.groupId;
+  const file = req.file;
+  
+  if (!file) {
+    return res.status(400).json({ error: 'No file uploaded' });
+  }
+  
+  // Update group icon in the database
+  db.run(
+    "UPDATE chats SET icon = ? WHERE id = ? AND type = 'group'",
+    [file.filename, groupId],
+    function(err) {
+      if (err) {
+        console.error('Error updating group icon:', err.message);
+        res.status(500).json({ error: 'Failed to update group icon' });
+      } else {
+        console.log(`✅ Updated icon for group ID: ${groupId}`);
+        res.json({
+          success: true,
+          icon: file.filename
+        });
+      }
+    }
+  );
+});
+
+// API endpoint to delete a chat
+app.delete('/api/chats/:chatId/:userId', (req, res) => {
+  const { chatId, userId } = req.params;
+  
+  // First check if user is a participant in this chat
+  db.get(
+    "SELECT * FROM chat_participants WHERE chat_id = ? AND user_id = ?",
+    [chatId, userId],
+    (err, participant) => {
+      if (err) {
+        console.error('Error checking participant:', err.message);
+        return res.status(500).json({ error: 'Database error' });
+      }
+      
+      if (!participant) {
+        return res.status(403).json({ error: 'User not authorized to delete this chat' });
+      }
+      
+      // Check chat type
+      db.get(
+        "SELECT type, created_by FROM chats WHERE id = ?",
+        [chatId],
+        (err, chat) => {
+          if (err) {
+            console.error('Error fetching chat:', err.message);
+            return res.status(500).json({ error: 'Database error' });
+          }
+          
+          if (!chat) {
+            return res.status(404).json({ error: 'Chat not found' });
+          }
+          
+          if (chat.type === 'group' && chat.created_by !== parseInt(userId)) {
+            // For groups, only the creator can delete the entire group
+            // Others can only leave the group
+            db.run(
+              "DELETE FROM chat_participants WHERE chat_id = ? AND user_id = ?",
+              [chatId, userId],
+              function(err) {
+                if (err) {
+                  console.error('Error leaving group:', err.message);
+                  return res.status(500).json({ error: 'Failed to leave group' });
+                }
+                
+                console.log(`✅ User ${userId} left group ${chatId}`);
+                res.json({ success: true, action: 'left_group' });
+              }
+            );
+          } else {
+            // For individual chats or group creator, delete the entire chat
+            db.run(
+              "DELETE FROM chats WHERE id = ?",
+              [chatId],
+              function(err) {
+                if (err) {
+                  console.error('Error deleting chat:', err.message);
+                  return res.status(500).json({ error: 'Failed to delete chat' });
+                }
+                
+                console.log(`✅ Chat ${chatId} deleted by user ${userId}`);
+                res.json({ success: true, action: 'deleted_chat' });
+              }
+            );
+          }
+        }
+      );
     }
   );
 });

@@ -42,6 +42,7 @@ class _ChatPageState extends State<ChatPage> {
             return CustomCard(
               chatModel: widget.chats![index],
               sourceChat: widget.sourceChat,
+              onChatDeleted: widget.onRefresh,
             );
           },
         ),
