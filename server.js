@@ -7,6 +7,7 @@ const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
 const multer = require('multer');
 const fs = require('fs');
+const QRCode = require('qrcode');
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -1396,6 +1397,62 @@ app.get('/api/messages/:chatId', (req, res) => {
   );
 });
 
+// API endpoint to generate QR code for user contact
+app.get('/api/qr-code/:userId', async (req, res) => {
+  const userId = req.params.userId;
+  
+  try {
+    // Get user details
+    db.get(
+      "SELECT id, name, phone FROM users WHERE id = ?",
+      [userId],
+      async (err, user) => {
+        if (err) {
+          res.status(500).json({ error: err.message });
+          return;
+        }
+        
+        if (!user) {
+          res.status(404).json({ error: 'User not found' });
+          return;
+        }
+        
+        // Create contact data for QR code
+        const contactData = {
+          type: 'contact',
+          userId: user.id,
+          name: user.name,
+          phone: user.phone
+        };
+        
+        try {
+          // Generate QR code as base64 data URL
+          const qrCodeDataURL = await QRCode.toDataURL(JSON.stringify(contactData), {
+            width: 300,
+            margin: 2,
+            color: {
+              dark: '#000000',
+              light: '#FFFFFF'
+            }
+          });
+          
+          res.json({
+            success: true,
+            qrCode: qrCodeDataURL,
+            contactData: contactData
+          });
+        } catch (qrError) {
+          console.error('QR Code generation error:', qrError);
+          res.status(500).json({ error: 'Failed to generate QR code' });
+        }
+      }
+    );
+  } catch (error) {
+    console.error('QR Code endpoint error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // API endpoint to upload user avatar
 app.post('/api/users/:userId/avatar', upload.single('avatar'), (req, res) => {
   const userId = req.params.userId;
@@ -1520,6 +1577,28 @@ app.delete('/api/chats/:chatId/:userId', (req, res) => {
       );
     }
   );
+});
+
+// QR code generation endpoint
+app.post('/api/qrcode', (req, res) => {
+  const { text } = req.body;
+  
+  if (!text) {
+    return res.status(400).json({ error: 'No text provided for QR code' });
+  }
+  
+  // Generate QR code
+  QRCode.toDataURL(text, { errorCorrectionLevel: 'H' }, (err, url) => {
+    if (err) {
+      console.error('Error generating QR code:', err.message);
+      return res.status(500).json({ error: 'Failed to generate QR code' });
+    }
+    
+    res.json({
+      success: true,
+      qrCodeUrl: url
+    });
+  });
 });
 
 // Graceful shutdown

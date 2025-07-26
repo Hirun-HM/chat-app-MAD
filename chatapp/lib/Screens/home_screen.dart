@@ -4,6 +4,8 @@ import 'package:chatapp/Pages/camera_page.dart';
 import 'package:chatapp/Pages/chat_page.dart';
 import 'package:chatapp/Services/chat_service.dart';
 import 'package:chatapp/Screens/settings_screen.dart';
+import 'package:chatapp/Screens/qr_scanner_screen.dart';
+import 'package:chatapp/Screens/share_contact_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 
@@ -240,6 +242,30 @@ class _HomeScreenState extends State<HomeScreen>
                         SettingsScreen(sourceChat: widget.sourceChat),
                   ),
                 );
+              } else if (value == "Scan QR Code") {
+                if (widget.sourceChat != null) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => QRScannerScreen(
+                        currentUserId: widget.sourceChat!.id!,
+                        currentUser: widget.sourceChat!,
+                      ),
+                    ),
+                  );
+                }
+              } else if (value == "Share Contact") {
+                if (widget.sourceChat != null) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => ShareContactScreen(
+                        userId: widget.sourceChat!.id!,
+                        userName: widget.sourceChat!.name ?? 'Unknown User',
+                      ),
+                    ),
+                  );
+                }
               }
             },
             itemBuilder: (context) {
@@ -248,6 +274,14 @@ class _HomeScreenState extends State<HomeScreen>
                 PopupMenuItem(
                   child: Text('New Broadcast'),
                   value: "New Broadcast",
+                ),
+                PopupMenuItem(
+                  child: Text('Share Contact'),
+                  value: "Share Contact",
+                ),
+                PopupMenuItem(
+                  child: Text('Scan QR Code'),
+                  value: "Scan QR Code",
                 ),
                 PopupMenuItem(
                   child: Text('Linked Devices'),

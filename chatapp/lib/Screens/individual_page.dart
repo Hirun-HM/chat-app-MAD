@@ -8,6 +8,8 @@ import 'package:chatapp/Model/chat_model.dart';
 import 'package:chatapp/Model/message_model.dart';
 import 'package:chatapp/Screens/camera_screen.dart';
 import 'package:chatapp/Screens/camera_view.dart';
+import 'package:chatapp/Screens/share_contact_screen.dart';
+import 'package:chatapp/Screens/qr_scanner_screen.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
@@ -442,13 +444,21 @@ class _IndividualPageState extends State<IndividualPage>
               IconButton(icon: const Icon(Icons.call), onPressed: () {}),
               PopupMenuButton<String>(
                 onSelected: (value) {
-                  print(value);
+                  _handleMenuSelection(value);
                 },
                 itemBuilder: (context) {
                   return [
                     PopupMenuItem(
                       child: Text('View Contact'),
                       value: "View Contact",
+                    ),
+                    PopupMenuItem(
+                      child: Text('Share Contact'),
+                      value: "Share Contact",
+                    ),
+                    PopupMenuItem(
+                      child: Text('Scan QR Code'),
+                      value: "Scan QR Code",
                     ),
                     PopupMenuItem(
                       child: Text('links, media, and docs'),
@@ -817,23 +827,42 @@ class _IndividualPageState extends State<IndividualPage>
 
   @override
   void dispose() {
-    // Remove observer
-    WidgetsBinding.instance.removeObserver(this);
-
-    // Emit leave_chat event before disposing
-    if (socket.connected) {
-      socket.emit("leave_chat", {
-        "userId": widget.sourceChat?.id,
-        "chatId": widget.chatModel?.id,
-      });
-      socket.disconnect();
-    }
-    socket.dispose();
-
-    // Clean up controllers
-    textFieldController.dispose();
-    textFieldFocusNode.dispose();
-
     super.dispose();
+    WidgetsBinding.instance.removeObserver(this);
+    socket.dispose();
+  }
+
+  void _handleMenuSelection(String value) {
+    switch (value) {
+      case 'Share Contact':
+        if (widget.sourceChat != null) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => ShareContactScreen(
+                userId: widget.sourceChat!.id!,
+                userName: widget.sourceChat!.name ?? 'Unknown User',
+              ),
+            ),
+          );
+        }
+        break;
+      case 'Scan QR Code':
+        if (widget.sourceChat != null) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => QRScannerScreen(
+                currentUserId: widget.sourceChat!.id!,
+                currentUser: widget.sourceChat!,
+              ),
+            ),
+          );
+        }
+        break;
+      default:
+        print('Selected: $value');
+        break;
+    }
   }
 }
