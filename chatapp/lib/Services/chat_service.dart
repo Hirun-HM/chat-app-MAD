@@ -3,7 +3,7 @@ import 'package:http/http.dart' as http;
 import '../Model/chat_model.dart';
 
 class ChatService {
-  static const String baseUrl = 'http://10.0.2.2:8000/api';
+  static const String baseUrl = 'http://192.168.1.3:8000/api';
 
   // Fetch chats for a specific user
   static Future<List<ChatModel>> getChats(int userId) async {
@@ -175,6 +175,32 @@ class ChatService {
       }
     } catch (e) {
       print('Error deleting chat: $e');
+      return null;
+    }
+  }
+
+  // Create or find individual chat between two users
+  static Future<Map<String, dynamic>?> createOrFindIndividualChat({
+    required int sourceId,
+    required int targetId,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/chats/individual'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'sourceId': sourceId, 'targetId': targetId}),
+      );
+
+      if (response.statusCode == 200) {
+        final result = json.decode(response.body);
+        print('✅ Chat created/found: ${result['chatId']}');
+        return result;
+      } else {
+        print('Failed to create/find chat: ${response.statusCode}');
+        return null;
+      }
+    } catch (e) {
+      print('Error creating/finding chat: $e');
       return null;
     }
   }

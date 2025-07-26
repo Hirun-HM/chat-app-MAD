@@ -46,7 +46,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   void connectSocket() {
     socket = IO.io(
-      "http://10.0.2.2:8000",
+      "http://192.168.1.3:8000",
       IO.OptionBuilder()
           .setTransports(['websocket'])
           .enableForceNew()
@@ -75,6 +75,13 @@ class _HomeScreenState extends State<HomeScreen>
                   data['lastMessage'] ?? updatedChat.currentMessage;
               updatedChat.time = _formatTime(data['time']) ?? updatedChat.time;
               updatedChat.unreadCount = data['unreadCount'] ?? 0;
+
+              // Update message status information
+              updatedChat.isLastMessageFromCurrentUser =
+                  data['isLastMessageFromCurrentUser'] ?? false;
+              updatedChat.lastMessageReadByOthers =
+                  data['lastMessageReadByOthers'] ?? false;
+              updatedChat.lastSenderId = data['senderId'];
 
               // Only update sender if it's not the current user
               if (data['senderId'] != widget.sourceChat?.id) {

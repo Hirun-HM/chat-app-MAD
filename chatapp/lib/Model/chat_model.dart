@@ -8,6 +8,9 @@ class ChatModel {
   bool select;
   int? id;
   int? unreadCount;
+  int? lastSenderId;
+  bool lastMessageReadByOthers;
+  bool isLastMessageFromCurrentUser;
 
   ChatModel({
     this.name,
@@ -19,6 +22,9 @@ class ChatModel {
     this.select = false,
     this.id,
     this.unreadCount = 0,
+    this.lastSenderId,
+    this.lastMessageReadByOthers = false,
+    this.isLastMessageFromCurrentUser = false,
   });
 
   // Factory constructor to create ChatModel from API response
@@ -33,6 +39,10 @@ class ChatModel {
       time: json['time'],
       status: 'offline',
       unreadCount: json['unread_count'] ?? 0,
+      lastSenderId: json['lastSenderId'],
+      lastMessageReadByOthers: json['lastMessageReadByOthers'] ?? false,
+      isLastMessageFromCurrentUser:
+          json['isLastMessageFromCurrentUser'] ?? false,
     );
   }
 }

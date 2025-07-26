@@ -70,7 +70,7 @@ class _IndividualPageState extends State<IndividualPage>
 
   void connect() {
     socket = IO.io(
-      "http://10.0.2.2:8000",
+      "http://192.168.1.3:8000",
       IO.OptionBuilder()
           .setTransports(['websocket'])
           .enableForceNew()
@@ -167,9 +167,7 @@ class _IndividualPageState extends State<IndividualPage>
               path: msg['path'] ?? '',
               time: DateTime.now().toString().substring(10, 16),
               isDelivered: true, // Assume delivered if in history
-              isRead:
-                  msg['messageType'] ==
-                  'destination', // Mark as read if it's from others
+              isRead: msg['isRead'] ?? false, // Use server-provided read status
             );
             messages.add(messageModel);
           }

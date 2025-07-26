@@ -378,14 +378,26 @@ io.on('connection', (socket) => {
           return;
         }
         
-        // Get all messages for this chat
+        // Get all messages for this chat with read status
         db.all(
-          `SELECT m.*, u.name as sender_name 
+          `SELECT m.*, u.name as sender_name,
+                  CASE WHEN mrs.user_id IS NOT NULL THEN 1 ELSE 0 END as is_read_by_current_user,
+                  -- For messages sent by current user, check if read by at least one other participant
+                  CASE 
+                    WHEN m.sender_id = ? THEN (
+                      SELECT COUNT(*) > 0 
+                      FROM message_read_status mrs2 
+                      WHERE mrs2.message_id = m.id 
+                      AND mrs2.user_id != ?
+                    )
+                    ELSE 0
+                  END as is_read_by_others
            FROM messages m
            JOIN users u ON m.sender_id = u.id
+           LEFT JOIN message_read_status mrs ON m.id = mrs.message_id AND mrs.user_id = ?
            WHERE m.chat_id = ?
            ORDER BY m.sent_at ASC`,
-          [chatId],
+          [userId, userId, userId, chatId],
           (err, messages) => {
             if (err) {
               console.error('Error getting chat history:', err.message);
@@ -403,6 +415,9 @@ io.on('connection', (socket) => {
                 senderId: msg.sender_id,
                 sentAt: msg.sent_at,
                 type: msg.message_type,
+                // For destination messages (received), use is_read_by_current_user
+                // For source messages (sent), use is_read_by_others
+                isRead: msg.sender_id === userId ? msg.is_read_by_others === 1 : msg.is_read_by_current_user === 1,
                 // Determine if this message is from the current user
                 messageType: msg.sender_id === userId ? 'source' : 'destination'
               }))
@@ -677,17 +692,53 @@ io.on('connection', (socket) => {
                         
                         const unreadCount = isInChat ? 0 : (countResult?.unread_count || 0);
                         
-                        // Always send chat list update with unread count
-                        participantSocket.emit('chat_list_update', {
-                          chatId: chatId,
-                          lastMessage: messageData.message_text,
-                          lastSender: messageData.sender_name,
-                          senderId: messageData.sender_id,
-                          time: messageData.sent_at,
-                          unreadCount: unreadCount
-                        });
+                        // Check if this message (if sent by current participant) has been read
+                        const isLastMessageFromCurrentUser = messageData.sender_id === participantId;
+                        let lastMessageReadByOthers = false;
                         
-                        console.log(`📋 Chat list update sent to user ${participantId}, unread: ${unreadCount}`);
+                        if (isLastMessageFromCurrentUser) {
+                          // Check if the message has been read by others
+                          db.get(
+                            `SELECT COUNT(*) > 0 as is_read 
+                             FROM message_read_status mrs 
+                             WHERE mrs.message_id = ? 
+                             AND mrs.user_id != ?`,
+                            [messageData.id, participantId],
+                            (err, readResult) => {
+                              if (!err && readResult) {
+                                lastMessageReadByOthers = readResult.is_read === 1;
+                              }
+                              
+                              // Always send chat list update with all information
+                              participantSocket.emit('chat_list_update', {
+                                chatId: chatId,
+                                lastMessage: messageData.message_text,
+                                lastSender: messageData.sender_name,
+                                senderId: messageData.sender_id,
+                                time: messageData.sent_at,
+                                unreadCount: unreadCount,
+                                isLastMessageFromCurrentUser: isLastMessageFromCurrentUser,
+                                lastMessageReadByOthers: lastMessageReadByOthers
+                              });
+                              
+                              console.log(`📋 Chat list update sent to user ${participantId}, unread: ${unreadCount}, read by others: ${lastMessageReadByOthers}`);
+                            }
+                          );
+                        } else {
+                          // Message is from someone else, send update immediately
+                          participantSocket.emit('chat_list_update', {
+                            chatId: chatId,
+                            lastMessage: messageData.message_text,
+                            lastSender: messageData.sender_name,
+                            senderId: messageData.sender_id,
+                            time: messageData.sent_at,
+                            unreadCount: unreadCount,
+                            isLastMessageFromCurrentUser: isLastMessageFromCurrentUser,
+                            lastMessageReadByOthers: false
+                          });
+                          
+                          console.log(`📋 Chat list update sent to user ${participantId}, unread: ${unreadCount}`);
+                        }
                       }
                     );
                   }
@@ -1036,6 +1087,31 @@ app.post('/api/groups', (req, res) => {
   );
 });
 
+// API endpoint to create or find individual chat
+app.post('/api/chats/individual', (req, res) => {
+  const { sourceId, targetId } = req.body;
+  
+  if (!sourceId || !targetId) {
+    return res.status(400).json({ error: 'Missing required fields: sourceId, targetId' });
+  }
+  
+  if (sourceId === targetId) {
+    return res.status(400).json({ error: 'Cannot create chat with yourself' });
+  }
+  
+  findOrCreateChat(sourceId, targetId, (chatId) => {
+    if (chatId) {
+      res.json({
+        success: true,
+        chatId: chatId,
+        message: 'Chat ready for messaging'
+      });
+    } else {
+      res.status(500).json({ error: 'Failed to create or find chat' });
+    }
+  });
+});
+
 // API endpoint to mark messages as read
 app.post('/api/messages/mark-read/:chatId/:userId', (req, res) => {
   const { chatId, userId } = req.params;
@@ -1222,19 +1298,38 @@ app.get('/api/chats/:userId', (req, res) => {
        (SELECT m.message_text 
         FROM messages m 
         WHERE m.chat_id = c.id 
-        ORDER BY m.sent_at DESC 
+        ORDER BY m.sent_at DESC, m.id DESC 
         LIMIT 1) as last_message,
        (SELECT m.sent_at 
         FROM messages m 
         WHERE m.chat_id = c.id 
-        ORDER BY m.sent_at DESC 
+        ORDER BY m.sent_at DESC, m.id DESC 
         LIMIT 1) as last_message_time,
        (SELECT u.name 
         FROM messages m 
         JOIN users u ON m.sender_id = u.id 
         WHERE m.chat_id = c.id 
-        ORDER BY m.sent_at DESC 
+        ORDER BY m.sent_at DESC, m.id DESC 
         LIMIT 1) as last_sender_name,
+       (SELECT m.sender_id 
+        FROM messages m 
+        WHERE m.chat_id = c.id 
+        ORDER BY m.sent_at DESC, m.id DESC 
+        LIMIT 1) as last_sender_id,
+       -- Check if last message (if sent by current user) has been read by others
+       (SELECT CASE 
+          WHEN last_msg.sender_id = ? THEN 
+            (SELECT COUNT(*) > 0 
+             FROM message_read_status mrs 
+             WHERE mrs.message_id = last_msg.id 
+             AND mrs.user_id != ?)
+          ELSE 0
+        END
+        FROM (SELECT m.id, m.sender_id 
+              FROM messages m 
+              WHERE m.chat_id = c.id 
+              ORDER BY m.sent_at DESC, m.id DESC 
+              LIMIT 1) as last_msg) as last_message_read_by_others,
        (SELECT COUNT(*) 
         FROM messages m 
         WHERE m.chat_id = c.id 
@@ -1256,8 +1351,11 @@ app.get('/api/chats/:userId', (req, res) => {
      FROM chats c
      JOIN chat_participants cp ON c.id = cp.chat_id
      WHERE cp.user_id = ?
+     AND EXISTS (
+       SELECT 1 FROM messages m WHERE m.chat_id = c.id
+     )
      ORDER BY COALESCE(last_message_time, c.updated_at) DESC`,
-    [userId, userId, userId, userId],
+    [userId, userId, userId, userId, userId, userId],
     (err, rows) => {
       if (err) {
         res.status(500).json({ error: err.message });
@@ -1267,7 +1365,10 @@ app.get('/api/chats/:userId', (req, res) => {
           ...row,
           time: row.last_message_time ? formatTime(row.last_message_time) : formatTime(row.updated_at),
           currentMessage: row.last_message || 'No messages yet',
-          name: row.display_name || row.name || 'Unknown Chat'
+          name: row.display_name || row.name || 'Unknown Chat',
+          lastSenderId: row.last_sender_id,
+          lastMessageReadByOthers: row.last_message_read_by_others === 1,
+          isLastMessageFromCurrentUser: row.last_sender_id === parseInt(userId)
         }));
         res.json(formattedRows);
       }

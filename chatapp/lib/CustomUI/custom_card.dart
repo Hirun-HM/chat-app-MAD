@@ -58,8 +58,11 @@ class CustomCard extends StatelessWidget {
             ),
             subtitle: Row(
               children: [
-                Icon(Icons.done_all, size: 16),
-                SizedBox(width: 5),
+                // Only show tick marks if the current user sent the last message
+                if (chatModel?.isLastMessageFromCurrentUser == true) ...[
+                  _buildMessageStatusIcon(),
+                  SizedBox(width: 5),
+                ],
                 Expanded(
                   child: Text(
                     chatModel?.currentMessage ?? 'No message',
@@ -105,6 +108,16 @@ class CustomCard extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Widget _buildMessageStatusIcon() {
+    if (chatModel?.lastMessageReadByOthers == true) {
+      // Blue double tick for read messages
+      return Icon(Icons.done_all, size: 16, color: Colors.blue);
+    } else {
+      // Gray double tick for delivered but not read messages
+      return Icon(Icons.done_all, size: 16, color: Colors.grey);
+    }
   }
 
   void _showDeleteDialog(BuildContext context) {

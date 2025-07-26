@@ -21,12 +21,20 @@ class ContactCard extends StatelessWidget {
               CircleAvatar(
                 radius: 23,
                 backgroundColor: Colors.blueGrey,
-                child: SvgPicture.asset(
-                  'assets/person.svg',
-                  width: 38,
-                  height: 38,
-                  color: Colors.white,
-                ),
+                backgroundImage:
+                    contact?.icon != null && contact!.icon!.isNotEmpty
+                    ? NetworkImage(
+                        'http://192.168.1.3:8000/uploads/${contact!.icon!}',
+                      )
+                    : null,
+                child: contact?.icon == null || contact!.icon!.isEmpty
+                    ? SvgPicture.asset(
+                        'assets/person.svg',
+                        width: 38,
+                        height: 38,
+                        color: Colors.white,
+                      )
+                    : null,
               ),
               contact?.select == true
                   ? Positioned(

@@ -216,7 +216,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             shape: BoxShape.circle,
             image: DecorationImage(
               image: NetworkImage(
-                'http://10.0.2.2:8000/uploads/${_currentAvatar!}',
+                'http://192.168.1.3:8000/uploads/${_currentAvatar!}',
               ),
               fit: BoxFit.cover,
             ),
