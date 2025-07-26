@@ -183,12 +183,13 @@ function insertSampleData() {
     if (row.count === 0) {
       console.log('📝 Inserting sample data...');
       
-      // Insert sample users
+      // Insert sample users with Sri Lankan phone numbers
       const users = [
-        { name: 'John Doe', phone: '+1234567890', avatar: 'person.svg' },
-        { name: 'Jane Smith', phone: '+1234567891', avatar: 'person.svg' },
-        { name: 'Mike Johnson', phone: '+1234567892', avatar: 'person.svg' },
-        { name: 'Sarah Wilson', phone: '+1234567893', avatar: 'person.svg' }
+        { name: 'John Doe', phone: '+94719162128', avatar: 'person.svg' },
+        { name: 'Jane Smith', phone: '+94741377070', avatar: 'person.svg' },
+        { name: 'Mike Johnson', phone: '+94764532890', avatar: 'person.svg' },
+        { name: 'Sarah Wilson', phone: '+94774087556', avatar: 'person.svg' },
+        { name: 'Alex Fernando', phone: '+94772147171', avatar: 'person.svg' }
       ];
 
       users.forEach((user, index) => {
@@ -1417,17 +1418,21 @@ app.get('/api/qr-code/:userId', async (req, res) => {
           return;
         }
         
-        // Create contact data for QR code
+        // Create WhatsApp link for QR code
+        const whatsAppLink = `https://wa.me/${user.phone.replace('+', '')}`;
+        
+        // Also create contact data as backup
         const contactData = {
           type: 'contact',
           userId: user.id,
           name: user.name,
-          phone: user.phone
+          phone: user.phone,
+          whatsappUrl: whatsAppLink
         };
         
         try {
-          // Generate QR code as base64 data URL
-          const qrCodeDataURL = await QRCode.toDataURL(JSON.stringify(contactData), {
+          // Generate QR code with WhatsApp link
+          const qrCodeDataURL = await QRCode.toDataURL(whatsAppLink, {
             width: 300,
             margin: 2,
             color: {
@@ -1439,7 +1444,8 @@ app.get('/api/qr-code/:userId', async (req, res) => {
           res.json({
             success: true,
             qrCode: qrCodeDataURL,
-            contactData: contactData
+            contactData: contactData,
+            whatsappUrl: whatsAppLink
           });
         } catch (qrError) {
           console.error('QR Code generation error:', qrError);
@@ -1449,6 +1455,40 @@ app.get('/api/qr-code/:userId', async (req, res) => {
     );
   } catch (error) {
     console.error('QR Code endpoint error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// API endpoint to find user by phone number
+app.get('/api/users/phone/:phoneNumber', (req, res) => {
+  const phoneNumber = req.params.phoneNumber;
+  
+  try {
+    db.get(
+      "SELECT id, name, phone, avatar FROM users WHERE phone = ?",
+      [phoneNumber],
+      (err, user) => {
+        if (err) {
+          console.error('Database error:', err);
+          res.status(500).json({ error: err.message });
+          return;
+        }
+        
+        if (!user) {
+          res.status(404).json({ error: 'User not found' });
+          return;
+        }
+        
+        res.json({
+          id: user.id,
+          name: user.name,
+          phoneNumber: user.phone,
+          avatar: user.avatar
+        });
+      }
+    );
+  } catch (error) {
+    console.error('Find user by phone endpoint error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

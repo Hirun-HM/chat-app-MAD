@@ -4,64 +4,49 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:chatapp/Model/chat_model.dart';
 import 'package:chatapp/Screens/individual_page.dart';
 import 'package:http/http.dart' as http;
+import 'package:url_launcher/url_launcher.dart';
 
 class QRScannerScreen extends StatefulWidget {
   final int currentUserId;
   final ChatModel currentUser;
 
   const QRScannerScreen({
-    Key? key,
+    super.key,
     required this.currentUserId,
     required this.currentUser,
-  }) : super(key: key);
+  });
 
   @override
   State<QRScannerScreen> createState() => _QRScannerScreenState();
 }
 
 class _QRScannerScreenState extends State<QRScannerScreen> {
-  MobileScannerController controller = MobileScannerController();
+  MobileScannerController cameraController = MobileScannerController();
   bool isProcessing = false;
 
   @override
   void dispose() {
-    controller.dispose();
+    cameraController.dispose();
     super.dispose();
   }
 
-  Future<void> _processScannedData(String data) async {
+  void _onDetect(BarcodeCapture capture) async {
     if (isProcessing) return;
+
+    final List<Barcode> barcodes = capture.barcodes;
+    if (barcodes.isEmpty) return;
+
+    final String? code = barcodes.first.rawValue;
+    if (code == null) return;
 
     setState(() {
       isProcessing = true;
     });
 
     try {
-      // Parse the QR code data
-      final Map<String, dynamic> contactData = json.decode(data);
-
-      if (contactData['type'] == 'contact') {
-        final userId = contactData['userId'];
-        final name = contactData['name'];
-        final phone = contactData['phone'];
-
-        // Create a chat model for the scanned contact
-        final ChatModel scannedUser = ChatModel(
-          id: userId,
-          name: name,
-          icon: "person.svg",
-          isGroup: false,
-          time: DateTime.now().toIso8601String(),
-          currentMessage: "Tap to start chatting",
-        );
-
-        // Show confirmation dialog
-        _showContactConfirmation(scannedUser, phone);
-      } else {
-        _showError('Invalid QR code format');
-      }
+      await _handleQRCode(code);
     } catch (e) {
-      _showError('Failed to process QR code: ${e.toString()}');
+      _showErrorDialog('Error processing QR code: $e');
     } finally {
       setState(() {
         isProcessing = false;
@@ -69,73 +54,59 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
     }
   }
 
-  void _showContactConfirmation(ChatModel contact, String phone) {
+  Future<void> _handleQRCode(String qrData) async {
+    // Check if it's a WhatsApp link
+    if (qrData.startsWith('https://wa.me/')) {
+      await _handleWhatsAppLink(qrData);
+    } else {
+      // Try to parse as JSON for direct contact info
+      try {
+        final Map<String, dynamic> contactData = json.decode(qrData);
+        await _handleContactData(contactData);
+      } catch (e) {
+        _showErrorDialog('Invalid QR code format');
+      }
+    }
+  }
+
+  Future<void> _handleWhatsAppLink(String whatsAppUrl) async {
+    // Extract phone number from WhatsApp URL
+    final Uri uri = Uri.parse(whatsAppUrl);
+    final String phoneNumber = uri.path.substring(1); // Remove leading '/'
+
+    // Show options dialog
     showDialog(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          backgroundColor: const Color(0xFF1F2C34),
-          title: const Text(
-            'Add Contact',
-            style: TextStyle(color: Colors.white),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 60,
-                height: 60,
-                decoration: BoxDecoration(
-                  color: Colors.grey[600],
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.person, size: 30, color: Colors.white),
-              ),
-              const SizedBox(height: 15),
-              Text(
-                contact.name ?? 'Unknown',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 5),
-              Text(
-                phone,
-                style: const TextStyle(color: Colors.grey, fontSize: 14),
-              ),
-              const SizedBox(height: 15),
-              const Text(
-                'Would you like to start a chat with this contact?',
-                style: TextStyle(color: Colors.white70),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
+          title: const Text('Contact Found'),
+          content: Text('Phone number: $phoneNumber\n\nChoose an action:'),
           actions: [
             TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-                // Resume scanning by resetting the processing flag
-                setState(() {
-                  isProcessing = false;
-                });
+              onPressed: () async {
+                Navigator.of(context).pop();
+                // Open WhatsApp directly
+                if (await canLaunchUrl(Uri.parse(whatsAppUrl))) {
+                  await launchUrl(Uri.parse(whatsAppUrl));
+                } else {
+                  _showErrorDialog('Could not open WhatsApp');
+                }
               },
-              child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+              child: const Text('Open WhatsApp'),
             ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-                _startChat(contact);
+            TextButton(
+              onPressed: () async {
+                Navigator.of(context).pop();
+                // Add to app contacts and create chat
+                await _createChatFromPhone(phoneNumber);
               },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF075E54),
-              ),
-              child: const Text(
-                'Start Chat',
-                style: TextStyle(color: Colors.white),
-              ),
+              child: const Text('Add to App'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: const Text('Cancel'),
             ),
           ],
         );
@@ -143,365 +114,172 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
     );
   }
 
-  void _startChat(ChatModel contact) async {
+  Future<void> _handleContactData(Map<String, dynamic> contactData) async {
+    final String? userId = contactData['userId']?.toString();
+    final String? name = contactData['name'];
+    final String? phoneNumber = contactData['phoneNumber'];
+
+    if (userId == null || name == null || phoneNumber == null) {
+      _showErrorDialog('Invalid contact data in QR code');
+      return;
+    }
+
+    // Check if this is the same user
+    if (widget.currentUserId.toString() == userId) {
+      _showErrorDialog('You cannot add yourself as a contact');
+      return;
+    }
+
+    // Create chat with this user
+    await _createChat(userId, name, phoneNumber);
+  }
+
+  Future<void> _createChatFromPhone(String phoneNumber) async {
     try {
-      // Create or get existing chat using the correct endpoint
-      final response = await http.post(
-        Uri.parse('http://192.168.1.3:8000/api/chats/individual'),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({
-          'sourceId': widget.currentUserId,
-          'targetId': contact.id,
-        }),
+      // First, try to find user by phone number
+      final response = await http.get(
+        Uri.parse('http://10.0.2.2:8000/api/users/phone/$phoneNumber'),
       );
 
       if (response.statusCode == 200) {
-        final chatData = json.decode(response.body);
-        final chatModel = ChatModel(
-          id: chatData['chatId'],
-          name: contact.name,
-          icon: contact.icon,
+        final userData = json.decode(response.body);
+        await _createChat(
+          userData['id'].toString(),
+          userData['name'],
+          userData['phoneNumber'],
+        );
+      } else {
+        _showErrorDialog(
+          'User not found in the app. The person needs to register first.',
+        );
+      }
+    } catch (e) {
+      _showErrorDialog('Error finding user: $e');
+    }
+  }
+
+  Future<void> _createChat(
+    String userId,
+    String name,
+    String phoneNumber,
+  ) async {
+    try {
+      final response = await http.post(
+        Uri.parse('http://10.0.2.2:8000/api/chats/individual'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'sourceId': widget.currentUserId,
+          'targetId': int.parse(userId),
+        }),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        // Create ChatModel for the new contact
+        final newContact = ChatModel(
+          id: int.parse(userId),
+          name: name,
           isGroup: false,
-          time: DateTime.now().toIso8601String(),
-          currentMessage: "Start your conversation",
+          time: "just now",
+          currentMessage: "Chat created",
+          icon: "person.svg",
         );
 
-        // Navigate to chat
+        // Navigate to the individual chat
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
             builder: (context) => IndividualPage(
-              chatModel: chatModel,
+              chatModel: newContact,
               sourceChat: widget.currentUser,
             ),
           ),
         );
       } else {
-        _showError('Failed to create chat');
+        _showErrorDialog('Error creating chat: ${response.body}');
       }
     } catch (e) {
-      _showError('Error creating chat: ${e.toString()}');
+      _showErrorDialog('Error creating chat: $e');
     }
   }
 
-  void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: Colors.red),
+  void _showErrorDialog(String message) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Error'),
+          content: Text(message),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: const Text('OK'),
+            ),
+          ],
+        );
+      },
     );
-    // Reset processing flag to allow scanning again
-    setState(() {
-      isProcessing = false;
-    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0F1419),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1F2C34),
-        title: const Text(
-          'Scan QR Code',
-          style: TextStyle(color: Colors.white),
-        ),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
-        ),
+        title: const Text('Scan QR Code'),
+        backgroundColor: const Color(0xFF075E54),
+        foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            onPressed: () => cameraController.toggleTorch(),
+            icon: const Icon(Icons.flash_on),
+          ),
+          IconButton(
+            onPressed: () => cameraController.switchCamera(),
+            icon: const Icon(Icons.camera_front),
+          ),
+        ],
       ),
       body: Stack(
         children: [
-          // Mobile Scanner View
-          MobileScanner(
-            controller: controller,
-            onDetect: (BarcodeCapture capture) {
-              final List<Barcode> barcodes = capture.barcodes;
-              for (final barcode in barcodes) {
-                if (barcode.rawValue != null && !isProcessing) {
-                  _processScannedData(barcode.rawValue!);
-                  break;
-                }
-              }
-            },
-          ),
-
-          // Scanner Overlay
-          Container(
-            decoration: ShapeDecoration(
-              shape: QrScannerOverlayShape(
-                borderColor: const Color(0xFF075E54),
-                borderRadius: 10,
-                borderLength: 30,
-                borderWidth: 10,
-                cutOutSize: 300,
+          MobileScanner(controller: cameraController, onDetect: _onDetect),
+          if (isProcessing)
+            Container(
+              color: Colors.black54,
+              child: const Center(child: CircularProgressIndicator()),
+            ),
+          // Overlay with scanning frame
+          Center(
+            child: Container(
+              width: 250,
+              height: 250,
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.white, width: 2),
+                borderRadius: BorderRadius.circular(12),
               ),
             ),
           ),
-
           // Instructions
           Positioned(
-            top: 50,
-            left: 20,
-            right: 20,
+            bottom: 100,
+            left: 0,
+            right: 0,
             child: Container(
-              padding: const EdgeInsets.all(15),
+              padding: const EdgeInsets.all(16),
+              margin: const EdgeInsets.symmetric(horizontal: 20),
               decoration: BoxDecoration(
                 color: Colors.black54,
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(8),
               ),
               child: const Text(
-                'Point your camera at a QR code to scan a contact',
+                'Point your camera at a QR code to scan it',
                 style: TextStyle(color: Colors.white, fontSize: 16),
                 textAlign: TextAlign.center,
               ),
             ),
           ),
-
-          // Processing Indicator
-          if (isProcessing)
-            Container(
-              color: Colors.black54,
-              child: const Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    CircularProgressIndicator(color: Color(0xFF075E54)),
-                    SizedBox(height: 20),
-                    Text(
-                      'Processing QR Code...',
-                      style: TextStyle(color: Colors.white, fontSize: 16),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-          // Bottom Controls
-          Positioned(
-            bottom: 50,
-            left: 0,
-            right: 0,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                // Flash Toggle
-                Container(
-                  decoration: BoxDecoration(
-                    color: Colors.black54,
-                    shape: BoxShape.circle,
-                  ),
-                  child: IconButton(
-                    onPressed: () {
-                      controller.toggleTorch();
-                    },
-                    icon: const Icon(
-                      Icons.flash_on,
-                      color: Colors.white,
-                      size: 28,
-                    ),
-                  ),
-                ),
-
-                // Camera Flip
-                Container(
-                  decoration: BoxDecoration(
-                    color: Colors.black54,
-                    shape: BoxShape.circle,
-                  ),
-                  child: IconButton(
-                    onPressed: () {
-                      controller.switchCamera();
-                    },
-                    icon: const Icon(
-                      Icons.flip_camera_ios,
-                      color: Colors.white,
-                      size: 28,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
         ],
       ),
-    );
-  }
-}
-
-class QrScannerOverlayShape extends ShapeBorder {
-  final Color borderColor;
-  final double borderWidth;
-  final Color overlayColor;
-  final double borderRadius;
-  final double borderLength;
-  final double cutOutSize;
-
-  const QrScannerOverlayShape({
-    this.borderColor = Colors.white,
-    this.borderWidth = 3.0,
-    this.overlayColor = const Color.fromRGBO(0, 0, 0, 80),
-    this.borderRadius = 0,
-    this.borderLength = 40,
-    this.cutOutSize = 250,
-  });
-
-  @override
-  EdgeInsetsGeometry get dimensions => const EdgeInsets.all(10);
-
-  @override
-  Path getInnerPath(Rect rect, {TextDirection? textDirection}) {
-    return Path()
-      ..fillType = PathFillType.evenOdd
-      ..addPath(getOuterPath(rect), Offset.zero);
-  }
-
-  @override
-  Path getOuterPath(Rect rect, {TextDirection? textDirection}) {
-    Path _getLeftTopPath(Rect rect) {
-      return Path()
-        ..moveTo(rect.left, rect.bottom)
-        ..lineTo(rect.left, rect.top + borderRadius)
-        ..quadraticBezierTo(
-          rect.left,
-          rect.top,
-          rect.left + borderRadius,
-          rect.top,
-        )
-        ..lineTo(rect.right, rect.top);
-    }
-
-    return _getLeftTopPath(rect)
-      ..lineTo(rect.right, rect.bottom)
-      ..lineTo(rect.left, rect.bottom)
-      ..lineTo(rect.left, rect.top);
-  }
-
-  @override
-  void paint(Canvas canvas, Rect rect, {TextDirection? textDirection}) {
-    final width = rect.width;
-    final borderWidthSize = width / 2;
-    final height = rect.height;
-    final borderOffset = borderWidth / 2;
-    final _borderLength = borderLength > cutOutSize / 2 + borderWidth * 2
-        ? borderWidthSize / 2
-        : borderLength;
-    final _cutOutSize = cutOutSize < width ? cutOutSize : width - borderOffset;
-
-    final backgroundPaint = Paint()
-      ..color = overlayColor
-      ..style = PaintingStyle.fill;
-
-    final borderPaint = Paint()
-      ..color = borderColor
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = borderWidth;
-
-    final boxPaint = Paint()
-      ..color = borderColor
-      ..style = PaintingStyle.fill
-      ..blendMode = BlendMode.dstOut;
-
-    final cutOutRect = Rect.fromLTWH(
-      rect.left + width / 2 - _cutOutSize / 2 + borderOffset,
-      rect.top + height / 2 - _cutOutSize / 2 + borderOffset,
-      _cutOutSize - borderOffset * 2,
-      _cutOutSize - borderOffset * 2,
-    );
-
-    // Draw overlay
-    canvas.saveLayer(rect, backgroundPaint);
-    canvas.drawRect(rect, backgroundPaint);
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(cutOutRect, Radius.circular(borderRadius)),
-      boxPaint,
-    );
-    canvas.restore();
-
-    // Draw border
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(cutOutRect, Radius.circular(borderRadius)),
-      borderPaint,
-    );
-
-    // Draw corners
-    final path = Path();
-    // Top-left corner
-    path.moveTo(cutOutRect.left - borderOffset, cutOutRect.top + _borderLength);
-    path.lineTo(cutOutRect.left - borderOffset, cutOutRect.top + borderRadius);
-    path.quadraticBezierTo(
-      cutOutRect.left - borderOffset,
-      cutOutRect.top - borderOffset,
-      cutOutRect.left + borderRadius,
-      cutOutRect.top - borderOffset,
-    );
-    path.lineTo(cutOutRect.left + _borderLength, cutOutRect.top - borderOffset);
-
-    // Top-right corner
-    path.moveTo(
-      cutOutRect.right - _borderLength,
-      cutOutRect.top - borderOffset,
-    );
-    path.lineTo(cutOutRect.right - borderRadius, cutOutRect.top - borderOffset);
-    path.quadraticBezierTo(
-      cutOutRect.right + borderOffset,
-      cutOutRect.top - borderOffset,
-      cutOutRect.right + borderOffset,
-      cutOutRect.top + borderRadius,
-    );
-    path.lineTo(
-      cutOutRect.right + borderOffset,
-      cutOutRect.top + _borderLength,
-    );
-
-    // Bottom-right corner
-    path.moveTo(
-      cutOutRect.right + borderOffset,
-      cutOutRect.bottom - _borderLength,
-    );
-    path.lineTo(
-      cutOutRect.right + borderOffset,
-      cutOutRect.bottom - borderRadius,
-    );
-    path.quadraticBezierTo(
-      cutOutRect.right + borderOffset,
-      cutOutRect.bottom + borderOffset,
-      cutOutRect.right - borderRadius,
-      cutOutRect.bottom + borderOffset,
-    );
-    path.lineTo(
-      cutOutRect.right - _borderLength,
-      cutOutRect.bottom + borderOffset,
-    );
-
-    // Bottom-left corner
-    path.moveTo(
-      cutOutRect.left + _borderLength,
-      cutOutRect.bottom + borderOffset,
-    );
-    path.lineTo(
-      cutOutRect.left + borderRadius,
-      cutOutRect.bottom + borderOffset,
-    );
-    path.quadraticBezierTo(
-      cutOutRect.left - borderOffset,
-      cutOutRect.bottom + borderOffset,
-      cutOutRect.left - borderOffset,
-      cutOutRect.bottom - borderRadius,
-    );
-    path.lineTo(
-      cutOutRect.left - borderOffset,
-      cutOutRect.bottom - _borderLength,
-    );
-
-    canvas.drawPath(path, borderPaint);
-  }
-
-  @override
-  ShapeBorder scale(double t) {
-    return QrScannerOverlayShape(
-      borderColor: borderColor,
-      borderWidth: borderWidth * t,
-      overlayColor: overlayColor,
     );
   }
 }
