@@ -65,9 +65,34 @@ class _IndividualPageState extends State<IndividualPage> {
     socket.onConnect((_) {
       print("✅ Socket connected with ID: ${socket.id}");
       socket.emit("signin", widget.sourceChat?.id);
+      
+      // Request chat history after connecting
+      socket.emit("get_chat_history", {
+        "sourceId": widget.sourceChat?.id,
+        "targetId": widget.chatModel?.id, // You may need to adjust this based on your chat model
+      });
+      
+      // Handle incoming messages
       socket.on("message", (msg) {
-        print(msg);
-        setMessage("destination", msg['message'], msg['path']);
+        print("📨 Received message: $msg");
+        setMessage("destination", msg['message'], msg['path'] ?? '');
+      });
+      
+      // Handle chat history
+      socket.on("chat_history", (data) {
+        print("📜 Received chat history with ${data['messages'].length} messages");
+        setState(() {
+          messages.clear(); // Clear existing messages
+          for (var msg in data['messages']) {
+            MessageModel messageModel = MessageModel(
+              type: msg['messageType'], // 'source' or 'destination'
+              message: msg['message'],
+              path: msg['path'] ?? '',
+              time: DateTime.now().toString().substring(10, 16),
+            );
+            messages.add(messageModel);
+          }
+        });
       });
     });
 

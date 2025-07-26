@@ -219,12 +219,53 @@ io.on('connection', (socket) => {
       }
     });
 
-    // Join user to their chat rooms
+    // Join user to their chat rooms and send chat history
     getUserChats(userId, (chats) => {
       chats.forEach(chat => {
         socket.join(`chat_${chat.id}`);
         console.log(`📱 User ${userId} joined chat room: chat_${chat.id}`);
       });
+    });
+  });
+
+  // Handle request for chat history
+  socket.on('get_chat_history', (data) => {
+    const { sourceId, targetId } = data;
+    console.log(`📜 Getting chat history between ${sourceId} and ${targetId}`);
+    
+    findOrCreateChat(sourceId, targetId, (chatId) => {
+      if (chatId) {
+        // Get all messages for this chat
+        db.all(
+          `SELECT m.*, u.name as sender_name 
+           FROM messages m
+           JOIN users u ON m.sender_id = u.id
+           WHERE m.chat_id = ?
+           ORDER BY m.sent_at ASC`,
+          [chatId],
+          (err, messages) => {
+            if (err) {
+              console.error('Error getting chat history:', err.message);
+            } else {
+              console.log(`📤 Sending ${messages.length} messages to user ${sourceId}`);
+              socket.emit('chat_history', {
+                chatId: chatId,
+                messages: messages.map(msg => ({
+                  id: msg.id,
+                  message: msg.message_text,
+                  path: msg.file_path || '',
+                  sender: msg.sender_name,
+                  senderId: msg.sender_id,
+                  sentAt: msg.sent_at,
+                  type: msg.message_type,
+                  // Determine if this message is from the current user
+                  messageType: msg.sender_id === sourceId ? 'source' : 'destination'
+                }))
+              });
+            }
+          }
+        );
+      }
     });
   });
 
