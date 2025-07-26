@@ -114,6 +114,28 @@ function initializeDatabase() {
       console.error('Error creating messages table:', err.message);
     } else {
       console.log('✅ Messages table ready');
+      createMessageReadStatusTable();
+    }
+  });
+}
+
+// Create message read status table
+function createMessageReadStatusTable() {
+  db.run(`
+    CREATE TABLE IF NOT EXISTS message_read_status (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      message_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      read_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (message_id) REFERENCES messages (id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users (id),
+      UNIQUE(message_id, user_id)
+    )
+  `, (err) => {
+    if (err) {
+      console.error('Error creating message_read_status table:', err.message);
+    } else {
+      console.log('✅ Message read status table ready');
       insertSampleData();
     }
   });
@@ -228,6 +250,39 @@ io.on('connection', (socket) => {
     });
   });
 
+  // Handle user entering a specific chat
+  socket.on('enter_chat', (data) => {
+    const { userId, chatId } = data;
+    console.log(`👤 User ${userId} entered chat ${chatId}`);
+    
+    // Store current chat for the user
+    socket.currentChatId = chatId;
+    
+    // Mark all messages in this chat as read by this user
+    markMessagesAsRead(userId, chatId);
+    
+    // Notify other users in the chat that this user is online in this chat
+    socket.to(`chat_${chatId}`).emit('user_entered_chat', {
+      userId: userId,
+      chatId: chatId
+    });
+  });
+
+  // Handle user leaving a specific chat
+  socket.on('leave_chat', (data) => {
+    const { userId, chatId } = data;
+    console.log(`👤 User ${userId} left chat ${chatId}`);
+    
+    // Clear current chat for the user
+    socket.currentChatId = null;
+    
+    // Notify other users in the chat that this user left
+    socket.to(`chat_${chatId}`).emit('user_left_chat', {
+      userId: userId,
+      chatId: chatId
+    });
+  });
+
   // Handle request for chat history
   socket.on('get_chat_history', (data) => {
     const { sourceId, targetId } = data;
@@ -306,15 +361,52 @@ io.on('connection', (socket) => {
                   return;
                 }
                 
-                // Broadcast message to all participants in the chat
-                socket.to(`chat_${chatId}`).emit('message', {
+                // Get all participants in this chat
+                getChatParticipants(chatId, (participants) => {
+                  // Broadcast message to all participants in the chat
+                  participants.forEach(participantId => {
+                    const participantSocketId = connectedUsers.get(participantId);
+                    if (participantSocketId && participantId !== sourceId) {
+                      const participantSocket = io.sockets.sockets.get(participantSocketId);
+                      if (participantSocket) {
+                        // Check if user is currently in this chat
+                        const isInChat = participantSocket.currentChatId === chatId;
+                        
+                        // Send message
+                        participantSocket.emit('message', {
+                          id: messageData.id,
+                          message: messageData.message_text,
+                          path: messageData.file_path || '',
+                          sender: messageData.sender_name,
+                          senderId: messageData.sender_id,
+                          sentAt: messageData.sent_at,
+                          type: messageData.message_type,
+                          chatId: chatId
+                        });
+                        
+                        // Send notification if user is not in this chat
+                        if (!isInChat) {
+                          participantSocket.emit('notification', {
+                            type: 'new_message',
+                            chatId: chatId,
+                            sender: messageData.sender_name,
+                            message: messageData.message_text,
+                            sentAt: messageData.sent_at
+                          });
+                          console.log(`🔔 Notification sent to user ${participantId} from ${messageData.sender_name}`);
+                        }
+                      }
+                    }
+                  });
+                });
+                
+                // Also emit to sender for confirmation
+                socket.emit('message_sent', {
                   id: messageData.id,
                   message: messageData.message_text,
                   path: messageData.file_path || '',
-                  sender: messageData.sender_name,
-                  senderId: messageData.sender_id,
                   sentAt: messageData.sent_at,
-                  type: messageData.message_type
+                  chatId: chatId
                 });
                 
                 // Update chat's last message timestamp
@@ -350,6 +442,33 @@ io.on('connection', (socket) => {
     }
   });
 });
+
+// Helper function to format time
+function formatTime(timestamp) {
+  const date = new Date(timestamp);
+  const now = new Date();
+  
+  // If it's today, show time
+  if (date.toDateString() === now.toDateString()) {
+    return date.toLocaleTimeString('en-US', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      hour12: false 
+    });
+  }
+  
+  // If it's this week, show day name
+  const daysDiff = Math.floor((now - date) / (1000 * 60 * 60 * 24));
+  if (daysDiff < 7) {
+    return date.toLocaleDateString('en-US', { weekday: 'short' });
+  }
+  
+  // Otherwise show date
+  return date.toLocaleDateString('en-US', { 
+    month: 'short', 
+    day: 'numeric' 
+  });
+}
 
 // Helper functions
 function getUserChats(userId, callback) {
@@ -437,6 +556,63 @@ function getMessageType(filePath) {
   }
 }
 
+// Helper function to get chat participants
+function getChatParticipants(chatId, callback) {
+  db.all(
+    "SELECT user_id FROM chat_participants WHERE chat_id = ?",
+    [chatId],
+    (err, rows) => {
+      if (err) {
+        console.error('Error getting chat participants:', err.message);
+        callback([]);
+      } else {
+        callback(rows.map(row => row.user_id));
+      }
+    }
+  );
+}
+
+// Helper function to mark messages as read
+function markMessagesAsRead(userId, chatId) {
+  // Get all unread messages in this chat for this user
+  db.all(
+    `SELECT m.id 
+     FROM messages m 
+     WHERE m.chat_id = ? 
+     AND m.sender_id != ? 
+     AND m.id NOT IN (
+       SELECT mrs.message_id 
+       FROM message_read_status mrs 
+       WHERE mrs.user_id = ?
+     )`,
+    [chatId, userId, userId],
+    (err, messages) => {
+      if (err) {
+        console.error('Error getting unread messages:', err.message);
+        return;
+      }
+      
+      // Mark each message as read
+      messages.forEach(message => {
+        db.run(
+          `INSERT OR IGNORE INTO message_read_status (message_id, user_id) 
+           VALUES (?, ?)`,
+          [message.id, userId],
+          (err) => {
+            if (err) {
+              console.error('Error marking message as read:', err.message);
+            }
+          }
+        );
+      });
+      
+      if (messages.length > 0) {
+        console.log(`✅ Marked ${messages.length} messages as read for user ${userId} in chat ${chatId}`);
+      }
+    }
+  );
+}
+
 // REST API endpoints
 app.get('/api/users', (req, res) => {
   db.all("SELECT id, name, phone, avatar, status FROM users", (err, rows) => {
@@ -452,19 +628,63 @@ app.get('/api/chats/:userId', (req, res) => {
   const userId = req.params.userId;
   
   db.all(
-    `SELECT DISTINCT c.id, c.name, c.type, c.icon, c.updated_at,
-            (SELECT message_text FROM messages WHERE chat_id = c.id ORDER BY sent_at DESC LIMIT 1) as last_message,
-            (SELECT sent_at FROM messages WHERE chat_id = c.id ORDER BY sent_at DESC LIMIT 1) as last_message_time
+    `SELECT DISTINCT 
+       c.id, 
+       c.name, 
+       c.type, 
+       c.icon, 
+       c.updated_at,
+       (SELECT m.message_text 
+        FROM messages m 
+        WHERE m.chat_id = c.id 
+        ORDER BY m.sent_at DESC 
+        LIMIT 1) as last_message,
+       (SELECT m.sent_at 
+        FROM messages m 
+        WHERE m.chat_id = c.id 
+        ORDER BY m.sent_at DESC 
+        LIMIT 1) as last_message_time,
+       (SELECT u.name 
+        FROM messages m 
+        JOIN users u ON m.sender_id = u.id 
+        WHERE m.chat_id = c.id 
+        ORDER BY m.sent_at DESC 
+        LIMIT 1) as last_sender_name,
+       (SELECT COUNT(*) 
+        FROM messages m 
+        WHERE m.chat_id = c.id 
+        AND m.sender_id != ? 
+        AND m.id NOT IN (
+          SELECT mrs.message_id 
+          FROM message_read_status mrs 
+          WHERE mrs.user_id = ?
+        )) as unread_count,
+       -- For individual chats, get the other participant's name
+       (CASE 
+        WHEN c.type = 'individual' THEN 
+          (SELECT u.name 
+           FROM chat_participants cp 
+           JOIN users u ON cp.user_id = u.id 
+           WHERE cp.chat_id = c.id AND cp.user_id != ?)
+        ELSE c.name 
+       END) as display_name
      FROM chats c
      JOIN chat_participants cp ON c.id = cp.chat_id
      WHERE cp.user_id = ?
-     ORDER BY c.updated_at DESC`,
-    [userId],
+     ORDER BY COALESCE(last_message_time, c.updated_at) DESC`,
+    [userId, userId, userId, userId],
     (err, rows) => {
       if (err) {
         res.status(500).json({ error: err.message });
       } else {
-        res.json(rows);
+        // Format the response with better time formatting
+        const formattedRows = rows.map(row => ({
+          ...row,
+          time: row.last_message_time ? formatTime(row.last_message_time) : formatTime(row.updated_at),
+          currentMessage: row.last_message || 'No messages yet',
+          name: row.display_name || row.name || 'Unknown Chat'
+        }));
+        res.json(formattedRows);
       }
     }
   );

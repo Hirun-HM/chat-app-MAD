@@ -43,6 +43,17 @@ class _IndividualPageState extends State<IndividualPage> {
   void initState() {
     super.initState();
     connect();
+
+    // Emit enter_chat event when page is opened
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (socket.connected) {
+        socket.emit("enter_chat", {
+          "userId": widget.sourceChat?.id,
+          "chatId": widget.chatModel?.id,
+        });
+      }
+    });
+
     textFieldFocusNode.addListener(() {
       if (textFieldFocusNode.hasFocus) {
         setState(() {
@@ -78,6 +89,18 @@ class _IndividualPageState extends State<IndividualPage> {
       socket.on("message", (msg) {
         print("📨 Received message: $msg");
         setMessage("destination", msg['message'], msg['path'] ?? '');
+      });
+
+      // Handle notifications (when user is not in the chat)
+      socket.on("notification", (data) {
+        print("🔔 Received notification: $data");
+        // You can add flutter local notifications here if needed
+        showNotificationSnackBar(data['sender'], data['message']);
+      });
+
+      // Handle message sent confirmation
+      socket.on("message_sent", (data) {
+        print("✅ Message sent confirmation: ${data['id']}");
       });
 
       // Handle chat history
@@ -134,6 +157,40 @@ class _IndividualPageState extends State<IndividualPage> {
         messages.add(messageModel);
       });
     });
+  }
+
+  // Show notification snackbar
+  void showNotificationSnackBar(String sender, String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(Icons.notifications, color: Colors.white),
+              SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(sender, style: TextStyle(fontWeight: FontWeight.bold)),
+                    Text(
+                      message.length > 50
+                          ? '${message.substring(0, 50)}...'
+                          : message,
+                      style: TextStyle(fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: Color(0xff075E54),
+          duration: Duration(seconds: 3),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   // Simplified image picker methods without permission_handler
@@ -677,8 +734,12 @@ class _IndividualPageState extends State<IndividualPage> {
 
   @override
   void dispose() {
-    // Clean up the socket connection
+    // Emit leave_chat event before disposing
     if (socket.connected) {
+      socket.emit("leave_chat", {
+        "userId": widget.sourceChat?.id,
+        "chatId": widget.chatModel?.id,
+      });
       socket.disconnect();
     }
     socket.dispose();

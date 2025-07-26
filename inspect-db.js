@@ -29,13 +29,15 @@ displayTable('users', () => {
   displayTable('chats', () => {
     displayTable('chat_participants', () => {
       displayTable('messages', () => {
-        
-        db.close((err) => {
-          if (err) {
-            console.error('Error closing database:', err.message);
-          } else {
-            console.log('✅ Database inspection completed.');
-          }
+        displayTable('message_read_status', () => {
+          
+          db.close((err) => {
+            if (err) {
+              console.error('Error closing database:', err.message);
+            } else {
+              console.log('✅ Database inspection completed.');
+            }
+          });
         });
       });
     });

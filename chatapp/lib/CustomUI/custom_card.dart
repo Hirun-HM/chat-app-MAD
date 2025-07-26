@@ -49,9 +49,32 @@ class CustomCard extends StatelessWidget {
                 ),
               ],
             ),
-            trailing: Text(
-              chatModel?.time ?? '00:00',
-              style: TextStyle(color: Colors.grey[600], fontSize: 14),
+            trailing: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  chatModel?.time ?? '00:00',
+                  style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                ),
+                SizedBox(height: 4),
+                if ((chatModel?.unreadCount ?? 0) > 0)
+                  Container(
+                    padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Color(0xff25D366),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      '${chatModel?.unreadCount}',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
           Padding(

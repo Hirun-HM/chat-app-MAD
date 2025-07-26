@@ -1,6 +1,7 @@
 import 'package:chatapp/CustomUI/button_card.dart';
 import 'package:chatapp/Model/chat_model.dart';
 import 'package:chatapp/Screens/home_screen.dart';
+import 'package:chatapp/Services/chat_service.dart';
 import 'package:flutter/material.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -12,47 +13,98 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   ChatModel? sourceChat;
-  List<ChatModel> chats = [
-    ChatModel(
-      name: 'John Doe',
-      icon: 'assets/person.svg',
-      isGroup: false,
-      currentMessage: 'Hello, how are you?',
-      time: '18.04',
-      id: 1,
-    ),
-    ChatModel(
-      name: 'Jane Smith',
-      icon: 'assets/person.svg',
-      isGroup: false,
-      currentMessage: 'Let\'s catch up later.',
-      time: '17.30',
-      id: 2,
-    ),
-    // ChatModel(
-    //   name: 'Group Chat',
-    //   icon: 'assets/groups.svg',
-    //   isGroup: true,
-    //   currentMessage: 'Welcome!',
-    //   time: '16.45',
-    // ),
-  ];
+  List<Map<String, dynamic>> users = [];
+  bool isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    loadUsers();
+  }
+
+  void loadUsers() async {
+    try {
+      final fetchedUsers = await ChatService.getUsers();
+      setState(() {
+        users = fetchedUsers;
+        isLoading = false;
+      });
+    } catch (e) {
+      print('Error loading users: $e');
+      setState(() {
+        isLoading = false;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: ListView.builder(
-        itemCount: chats.length,
-        itemBuilder: (context, index) => InkWell(
-          onTap: () {
-            sourceChat = chats.removeAt(index);
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (builder) => HomeScreen(chatmodels: chats,sourceChat: sourceChat,)),
-            );
-          },
-          child: ButtonCard(name: chats[index].name, icon: Icons.person),
+      appBar: AppBar(
+        title: Text(
+          'Select Your Account',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
+        backgroundColor: Color(0xff075E54),
+        centerTitle: true,
       ),
+      body: isLoading
+          ? Center(child: CircularProgressIndicator())
+          : users.isEmpty
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.error_outline, size: 64, color: Colors.grey),
+                  SizedBox(height: 16),
+                  Text(
+                    'No users found',
+                    style: TextStyle(fontSize: 18, color: Colors.grey),
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    'Make sure the server is running',
+                    style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                  ),
+                  SizedBox(height: 16),
+                  ElevatedButton(onPressed: loadUsers, child: Text('Retry')),
+                ],
+              ),
+            )
+          : ListView.builder(
+              itemCount: users.length,
+              itemBuilder: (context, index) {
+                final user = users[index];
+                return InkWell(
+                  onTap: () async {
+                    // Create source chat from selected user
+                    sourceChat = ChatModel(
+                      id: user['id'],
+                      name: user['name'],
+                      icon: user['avatar'],
+                      isGroup: false,
+                    );
+
+                    // Load chats for this user
+                    final chats = await ChatService.getChats(user['id']);
+
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(
+                        builder: (builder) => HomeScreen(
+                          chatmodels: chats,
+                          sourceChat: sourceChat,
+                        ),
+                      ),
+                    );
+                  },
+                  child: ButtonCard(
+                    name: user['name'] ?? 'Unknown User',
+                    icon: Icons.person,
+                  ),
+                );
+              },
+            ),
     );
   }
 }

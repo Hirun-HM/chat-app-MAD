@@ -15,13 +15,13 @@ const user2Socket = io('http://localhost:8000', {
 let user1Connected = false;
 let user2Connected = false;
 
-// User 1 (John Doe - ID: 1)
+
 user1Socket.on('connect', () => {
   console.log('👤 User 1 (John Doe) connected');
   user1Socket.emit('signin', 1);
   user1Connected = true;
   
-  // Request chat history
+
   user1Socket.emit('get_chat_history', {
     sourceId: 1,
     targetId: 2
@@ -43,13 +43,13 @@ user1Socket.on('chat_history', (data) => {
   }
 });
 
-// User 2 (Jane Smith - ID: 2)
+
 user2Socket.on('connect', () => {
   console.log('👤 User 2 (Jane Smith) connected');
   user2Socket.emit('signin', 2);
   user2Connected = true;
   
-  // Request chat history
+
   user2Socket.emit('get_chat_history', {
     sourceId: 2,
     targetId: 1
