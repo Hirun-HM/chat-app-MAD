@@ -282,7 +282,7 @@ io.on('connection', (socket) => {
   // Handle user entering a specific chat
   socket.on('enter_chat', (data) => {
     const { userId, chatId } = data;
-    console.log(`👤 User ${userId} entered chat ${chatId}`);
+    console.log(`👤 User ${userId} entered chat ${chatId} - marking messages as read`);
     
     // Store current chat for the user
     socket.currentChatId = chatId;
@@ -657,13 +657,39 @@ io.on('connection', (socket) => {
                       console.log(`🔔 Notification sent to user ${participantId} from ${messageData.sender_name}`);
                     }
                     
-                    // Always send chat list update
-                    participantSocket.emit('chat_list_update', {
-                      chatId: chatId,
-                      lastMessage: messageData.message_text,
-                      lastSender: messageData.sender_name,
-                      time: messageData.sent_at
-                    });
+                    // Calculate unread count for this participant
+                    db.get(
+                      `SELECT COUNT(*) as unread_count
+                       FROM messages m 
+                       WHERE m.chat_id = ? 
+                       AND m.sender_id != ? 
+                       AND m.id NOT IN (
+                         SELECT mrs.message_id 
+                         FROM message_read_status mrs 
+                         WHERE mrs.user_id = ?
+                       )`,
+                      [chatId, participantId, participantId],
+                      (err, countResult) => {
+                        if (err) {
+                          console.error('Error calculating unread count:', err.message);
+                          return;
+                        }
+                        
+                        const unreadCount = isInChat ? 0 : (countResult?.unread_count || 0);
+                        
+                        // Always send chat list update with unread count
+                        participantSocket.emit('chat_list_update', {
+                          chatId: chatId,
+                          lastMessage: messageData.message_text,
+                          lastSender: messageData.sender_name,
+                          senderId: messageData.sender_id,
+                          time: messageData.sent_at,
+                          unreadCount: unreadCount
+                        });
+                        
+                        console.log(`📋 Chat list update sent to user ${participantId}, unread: ${unreadCount}`);
+                      }
+                    );
                   }
                 }
               });
@@ -919,8 +945,8 @@ function markMessagesAsRead(userId, chatId) {
       // Mark each message as read
       messages.forEach(message => {
         db.run(
-          `INSERT OR IGNORE INTO message_read_status (message_id, user_id) 
-           VALUES (?, ?)`,
+          `INSERT OR IGNORE INTO message_read_status (message_id, user_id, read_at) 
+           VALUES (?, ?, datetime('now'))`,
           [message.id, userId],
           (err) => {
             if (err) {
@@ -932,6 +958,20 @@ function markMessagesAsRead(userId, chatId) {
       
       if (messages.length > 0) {
         console.log(`✅ Marked ${messages.length} messages as read for user ${userId} in chat ${chatId}`);
+      }
+      
+      // Always emit unread count update to ensure UI is synced, regardless of whether there were messages to mark
+      const userSocketId = connectedUsers.get(userId);
+      if (userSocketId) {
+        const userSocket = io.sockets.sockets.get(userSocketId);
+        if (userSocket) {
+          console.log(`📤 Sending unread count update to user ${userId} for chat ${chatId}: 0`);
+          userSocket.emit('unread_count_update', {
+            chatId: chatId,
+            userId: userId,
+            unreadCount: 0
+          });
+        }
       }
     }
   );

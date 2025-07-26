@@ -7,7 +7,6 @@ import 'package:chatapp/CustomUI/reply_message.dart';
 import 'package:chatapp/Model/chat_model.dart';
 import 'package:chatapp/Model/message_model.dart';
 import 'package:chatapp/Screens/camera_screen.dart';
-import 'package:chatapp/Services/chat_service.dart';
 import 'package:chatapp/Screens/camera_view.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:flutter/material.dart';
@@ -28,7 +27,8 @@ class IndividualPage extends StatefulWidget {
   State<IndividualPage> createState() => _IndividualPageState();
 }
 
-class _IndividualPageState extends State<IndividualPage> {
+class _IndividualPageState extends State<IndividualPage>
+    with WidgetsBindingObserver {
   bool isEmojiVisible = false;
   FocusNode textFieldFocusNode = FocusNode();
   late IO.Socket socket;
@@ -42,25 +42,8 @@ class _IndividualPageState extends State<IndividualPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     connect();
-
-    // Emit enter_chat event when page is opened
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (socket.connected) {
-        socket.emit("enter_chat", {
-          "userId": widget.sourceChat?.id,
-          "chatId": widget.chatModel?.id,
-        });
-
-        // Mark messages as read using API
-        if (widget.chatModel?.id != null && widget.sourceChat?.id != null) {
-          ChatService.markMessagesAsRead(
-            widget.chatModel!.id!,
-            widget.sourceChat!.id!,
-          );
-        }
-      }
-    });
 
     textFieldFocusNode.addListener(() {
       if (textFieldFocusNode.hasFocus) {
@@ -69,6 +52,20 @@ class _IndividualPageState extends State<IndividualPage> {
         });
       }
     });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+
+    if (state == AppLifecycleState.resumed && socket.connected) {
+      // When app resumes and user is in this chat, mark messages as read
+      print("📱 App resumed in individual chat - marking messages as read");
+      socket.emit("enter_chat", {
+        "userId": widget.sourceChat?.id,
+        "chatId": widget.chatModel?.id,
+      });
+    }
   }
 
   void connect() {
@@ -90,6 +87,12 @@ class _IndividualPageState extends State<IndividualPage> {
         socket.emit("join_chat", {
           "chatId": widget.chatModel!.id,
           "userId": widget.sourceChat?.id,
+        });
+
+        // Immediately emit enter_chat to mark messages as read
+        socket.emit("enter_chat", {
+          "userId": widget.sourceChat?.id,
+          "chatId": widget.chatModel?.id,
         });
       }
 
@@ -171,6 +174,13 @@ class _IndividualPageState extends State<IndividualPage> {
             messages.add(messageModel);
           }
         });
+      });
+
+      // Listen for unread count updates
+      socket.on("unread_count_update", (data) {
+        print("🔢 Individual page - Unread count update: $data");
+        // This ensures that when the count is cleared on entering chat,
+        // any UI elements that depend on this are updated
       });
     });
 
@@ -809,6 +819,9 @@ class _IndividualPageState extends State<IndividualPage> {
 
   @override
   void dispose() {
+    // Remove observer
+    WidgetsBinding.instance.removeObserver(this);
+
     // Emit leave_chat event before disposing
     if (socket.connected) {
       socket.emit("leave_chat", {

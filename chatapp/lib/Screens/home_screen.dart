@@ -17,7 +17,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   TabController? _controller;
   List<ChatModel> chats = [];
   bool isLoading = true;
@@ -26,9 +26,22 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _controller = TabController(length: 4, vsync: this, initialIndex: 1);
     connectSocket();
-    loadChats();
+    // Always refresh chats when the page loads
+    refreshChats();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+
+    if (state == AppLifecycleState.resumed) {
+      // Refresh chats when app resumes
+      print("📱 App resumed - refreshing chat list");
+      refreshChats();
+    }
   }
 
   void connectSocket() {
@@ -48,7 +61,58 @@ class _HomeScreenState extends State<HomeScreen>
       // Listen for chat list updates
       socket.on("chat_list_update", (data) {
         print("📋 Chat list update received: $data");
-        loadChats(); // Refresh the chat list
+
+        // Update the specific chat in the list instead of reloading everything
+        if (data['chatId'] != null) {
+          setState(() {
+            final chatIndex = chats.indexWhere(
+              (chat) => chat.id == data['chatId'],
+            );
+            if (chatIndex != -1) {
+              // Update existing chat
+              final updatedChat = chats[chatIndex];
+              updatedChat.currentMessage =
+                  data['lastMessage'] ?? updatedChat.currentMessage;
+              updatedChat.time = _formatTime(data['time']) ?? updatedChat.time;
+              updatedChat.unreadCount = data['unreadCount'] ?? 0;
+
+              // Only update sender if it's not the current user
+              if (data['senderId'] != widget.sourceChat?.id) {
+                updatedChat.currentMessage =
+                    data['lastMessage'] ?? updatedChat.currentMessage;
+              }
+
+              // Move this chat to the top (most recent)
+              chats.removeAt(chatIndex);
+              chats.insert(0, updatedChat);
+            } else {
+              // If chat not found, refresh the entire list
+              print("🔄 Chat not found in list, refreshing...");
+              loadChats();
+            }
+          });
+        } else {
+          // Fallback to full refresh if no chatId provided
+          loadChats();
+        }
+      });
+
+      // Listen for unread count updates
+      socket.on("unread_count_update", (data) {
+        print("🔢 Unread count update: $data");
+        if (data['chatId'] != null && data['userId'] == widget.sourceChat?.id) {
+          setState(() {
+            final chatIndex = chats.indexWhere(
+              (chat) => chat.id == data['chatId'],
+            );
+            if (chatIndex != -1) {
+              chats[chatIndex].unreadCount = data['unreadCount'] ?? 0;
+              print(
+                "✅ Updated unread count for chat ${data['chatId']}: ${data['unreadCount']}",
+              );
+            }
+          });
+        }
       });
     });
 
@@ -65,8 +129,9 @@ class _HomeScreenState extends State<HomeScreen>
           chats = fetchedChats;
           isLoading = false;
         });
+        print("✅ Successfully loaded ${fetchedChats.length} chats");
       } catch (e) {
-        print('Error loading chats: $e');
+        print('❌ Error loading chats: $e');
         setState(() {
           chats = widget.chatmodels ?? [];
           isLoading = false;
@@ -82,16 +147,60 @@ class _HomeScreenState extends State<HomeScreen>
 
   // Method to refresh chats
   void refreshChats() {
+    print("🔄 Refreshing chat list...");
     setState(() {
       isLoading = true;
     });
     loadChats();
   }
 
+  // Helper method to format time like WhatsApp
+  String? _formatTime(String? timestamp) {
+    if (timestamp == null) return null;
+
+    try {
+      final date = DateTime.parse(timestamp);
+      final now = DateTime.now();
+
+      // If it's today, show time (HH:MM)
+      if (date.year == now.year &&
+          date.month == now.month &&
+          date.day == now.day) {
+        return "${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}";
+      }
+
+      // If it's this week, show day name
+      final daysDiff = now.difference(date).inDays;
+      if (daysDiff < 7) {
+        final weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+        return weekdays[date.weekday - 1];
+      }
+
+      // Otherwise show date
+      return "${date.day}/${date.month}/${date.year}";
+    } catch (e) {
+      print('Error formatting time: $e');
+      return timestamp;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          onPressed: () {
+            // Refresh chats before navigating back
+            refreshChats();
+            // Add a small delay to ensure refresh completes
+            Future.delayed(Duration(milliseconds: 500), () {
+              Navigator.pop(context);
+            });
+          },
+          icon: Icon(Icons.arrow_back),
+          color: Colors.white,
+          tooltip: 'Back (with refresh)',
+        ),
         title: Text(
           'Whatsapp Clone',
           style: TextStyle(
@@ -106,6 +215,12 @@ class _HomeScreenState extends State<HomeScreen>
             onPressed: () {},
             icon: Icon(Icons.search),
             color: Colors.white,
+          ),
+          IconButton(
+            onPressed: refreshChats,
+            icon: Icon(Icons.refresh),
+            color: Colors.white,
+            tooltip: 'Refresh chats',
           ),
           PopupMenuButton<String>(
             onSelected: (value) {
@@ -185,6 +300,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     if (socket.connected) {
       socket.disconnect();
     }

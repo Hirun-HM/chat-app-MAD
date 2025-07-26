@@ -18,14 +18,21 @@ class CustomCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: () {
-        Navigator.push(
+      onTap: () async {
+        // Navigate to individual page and wait for return
+        await Navigator.push(
           context,
           MaterialPageRoute(
             builder: (context) =>
                 IndividualPage(chatModel: chatModel, sourceChat: sourceChat),
           ),
         );
+        // When returning from individual page, the home screen socket should have
+        // already received the unread count update, but we can trigger a small delay
+        // to ensure the UI is updated
+        Future.delayed(Duration(milliseconds: 100), () {
+          // The home screen's socket listener should handle the unread count update
+        });
       },
       onLongPress: () {
         _showDeleteDialog(context);
