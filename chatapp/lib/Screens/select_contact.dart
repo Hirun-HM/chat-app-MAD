@@ -5,7 +5,9 @@ import 'package:chatapp/Screens/create_group.dart';
 import 'package:flutter/material.dart';
 
 class SelectContact extends StatefulWidget {
-  const SelectContact({super.key});
+  const SelectContact({super.key, this.sourceChat});
+
+  final ChatModel? sourceChat;
 
   @override
   State<SelectContact> createState() => _SelectContactState();
@@ -80,7 +82,10 @@ class _SelectContactState extends State<SelectContact> {
               onTap: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => const CreateGroup()),
+                  MaterialPageRoute(
+                    builder: (context) =>
+                        CreateGroup(sourceChat: widget.sourceChat),
+                  ),
                 );
               },
               child: ButtonCard(name: 'New Group', icon: Icons.group_add),

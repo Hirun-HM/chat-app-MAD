@@ -8,6 +8,7 @@ import 'package:chatapp/CustomUI/reply_message.dart';
 import 'package:chatapp/Model/chat_model.dart';
 import 'package:chatapp/Model/message_model.dart';
 import 'package:chatapp/Screens/camera_screen.dart';
+import 'package:chatapp/Services/chat_service.dart';
 import 'package:chatapp/Screens/camera_view.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:flutter/material.dart';
@@ -51,6 +52,14 @@ class _IndividualPageState extends State<IndividualPage> {
           "userId": widget.sourceChat?.id,
           "chatId": widget.chatModel?.id,
         });
+
+        // Mark messages as read using API
+        if (widget.chatModel?.id != null && widget.sourceChat?.id != null) {
+          ChatService.markMessagesAsRead(
+            widget.chatModel!.id!,
+            widget.sourceChat!.id!,
+          );
+        }
       }
     });
 
@@ -67,9 +76,9 @@ class _IndividualPageState extends State<IndividualPage> {
     socket = IO.io(
       "http://10.0.2.2:8000",
       IO.OptionBuilder()
-          .setTransports(['websocket']) // Required for Flutter
-          .enableForceNew() // Force new connection
-          .enableAutoConnect() // Auto connect is true by default
+          .setTransports(['websocket'])
+          .enableForceNew()
+          .enableAutoConnect()
           .build(),
     );
 
@@ -77,15 +86,11 @@ class _IndividualPageState extends State<IndividualPage> {
       print("✅ Socket connected with ID: ${socket.id}");
       socket.emit("signin", widget.sourceChat?.id);
 
-      // Request chat history after connecting
       socket.emit("get_chat_history", {
         "sourceId": widget.sourceChat?.id,
-        "targetId": widget
-            .chatModel
-            ?.id, // You may need to adjust this based on your chat model
+        "targetId": widget.chatModel?.id,
       });
 
-      // Handle incoming messages
       socket.on("message", (msg) {
         print("📨 Received message: $msg");
         setMessage("destination", msg['message'], msg['path'] ?? '');
@@ -94,25 +99,23 @@ class _IndividualPageState extends State<IndividualPage> {
       // Handle notifications (when user is not in the chat)
       socket.on("notification", (data) {
         print("🔔 Received notification: $data");
-        // You can add flutter local notifications here if needed
+
         showNotificationSnackBar(data['sender'], data['message']);
       });
 
-      // Handle message sent confirmation
       socket.on("message_sent", (data) {
         print("✅ Message sent confirmation: ${data['id']}");
       });
 
-      // Handle chat history
       socket.on("chat_history", (data) {
         print(
           "📜 Received chat history with ${data['messages'].length} messages",
         );
         setState(() {
-          messages.clear(); // Clear existing messages
+          messages.clear();
           for (var msg in data['messages']) {
             MessageModel messageModel = MessageModel(
-              type: msg['messageType'], // 'source' or 'destination'
+              type: msg['messageType'],
               message: msg['message'],
               path: msg['path'] ?? '',
               time: DateTime.now().toString().substring(10, 16),

@@ -41,11 +41,15 @@ class CustomCard extends StatelessWidget {
             ),
             subtitle: Row(
               children: [
-                Icon(Icons.done_all),
+                Icon(Icons.done_all, size: 16),
                 SizedBox(width: 5),
-                Text(
-                  chatModel?.currentMessage ?? 'No message',
-                  style: TextStyle(color: Colors.grey[600], fontSize: 16),
+                Expanded(
+                  child: Text(
+                    chatModel?.currentMessage ?? 'No message',
+                    style: TextStyle(color: Colors.grey[600], fontSize: 16),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                  ),
                 ),
               ],
             ),

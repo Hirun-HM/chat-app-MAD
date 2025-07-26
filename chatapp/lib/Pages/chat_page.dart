@@ -4,9 +4,10 @@ import 'package:chatapp/Screens/select_contact.dart';
 import 'package:flutter/material.dart';
 
 class ChatPage extends StatefulWidget {
-  const ChatPage({super.key ,this.chats, this.sourceChat});
+  const ChatPage({super.key, this.chats, this.sourceChat, this.onRefresh});
   final List<ChatModel>? chats;
   final ChatModel? sourceChat;
+  final VoidCallback? onRefresh;
 
   @override
   State<ChatPage> createState() => _ChatPageState();
@@ -20,19 +21,30 @@ class _ChatPageState extends State<ChatPage> {
         onPressed: () {
           Navigator.push(
             context,
-            MaterialPageRoute(builder: (context) => const SelectContact()),
+            MaterialPageRoute(
+              builder: (context) =>
+                  SelectContact(sourceChat: widget.sourceChat),
+            ),
           );
         },
         backgroundColor: const Color(0xff128C7E),
         child: const Icon(Icons.chat),
       ),
-      body: ListView.builder(
-        itemCount: widget.chats?.length ?? 0,
-        itemBuilder: (context, index) {
-          return CustomCard(chatModel: widget.chats![index],
-            sourceChat: widget.sourceChat,
-          );
+      body: RefreshIndicator(
+        onRefresh: () async {
+          if (widget.onRefresh != null) {
+            widget.onRefresh!();
+          }
         },
+        child: ListView.builder(
+          itemCount: widget.chats?.length ?? 0,
+          itemBuilder: (context, index) {
+            return CustomCard(
+              chatModel: widget.chats![index],
+              sourceChat: widget.sourceChat,
+            );
+          },
+        ),
       ),
     );
   }

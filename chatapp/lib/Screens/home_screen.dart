@@ -2,6 +2,7 @@ import 'package:chatapp/Model/chat_model.dart';
 import 'package:chatapp/NewScreens/call_screen.dart';
 import 'package:chatapp/Pages/camera_page.dart';
 import 'package:chatapp/Pages/chat_page.dart';
+import 'package:chatapp/Services/chat_service.dart';
 import 'package:flutter/material.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -16,11 +17,45 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen>
     with SingleTickerProviderStateMixin {
   TabController? _controller;
+  List<ChatModel> chats = [];
+  bool isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _controller = TabController(length: 4, vsync: this, initialIndex: 0);
+    _controller = TabController(length: 4, vsync: this, initialIndex: 1);
+    loadChats();
+  }
+
+  void loadChats() async {
+    if (widget.sourceChat?.id != null) {
+      try {
+        final fetchedChats = await ChatService.getChats(widget.sourceChat!.id!);
+        setState(() {
+          chats = fetchedChats;
+          isLoading = false;
+        });
+      } catch (e) {
+        print('Error loading chats: $e');
+        setState(() {
+          chats = widget.chatmodels ?? [];
+          isLoading = false;
+        });
+      }
+    } else {
+      setState(() {
+        chats = widget.chatmodels ?? [];
+        isLoading = false;
+      });
+    }
+  }
+
+  // Method to refresh chats
+  void refreshChats() {
+    setState(() {
+      isLoading = true;
+    });
+    loadChats();
   }
 
   @override
@@ -95,9 +130,15 @@ class _HomeScreenState extends State<HomeScreen>
         controller: _controller,
         children: [
           CameraPage(),
-          ChatPage(chats: widget.chatmodels,sourceChat: widget.sourceChat,),
+          isLoading
+              ? Center(child: CircularProgressIndicator())
+              : ChatPage(
+                  chats: chats,
+                  sourceChat: widget.sourceChat,
+                  onRefresh: refreshChats,
+                ),
           Center(child: Text('Status')),
-          CallScreen()
+          CallScreen(),
         ],
       ),
     );

@@ -393,7 +393,24 @@ io.on('connection', (socket) => {
                             message: messageData.message_text,
                             sentAt: messageData.sent_at
                           });
+                          
+                          // Also emit chat list update event
+                          participantSocket.emit('chat_list_update', {
+                            chatId: chatId,
+                            lastMessage: messageData.message_text,
+                            lastSender: messageData.sender_name,
+                            time: messageData.sent_at
+                          });
+                          
                           console.log(`🔔 Notification sent to user ${participantId} from ${messageData.sender_name}`);
+                        } else {
+                          // User is in chat, just update their chat list
+                          participantSocket.emit('chat_list_update', {
+                            chatId: chatId,
+                            lastMessage: messageData.message_text,
+                            lastSender: messageData.sender_name,
+                            time: messageData.sent_at
+                          });
                         }
                       }
                     }
@@ -612,6 +629,117 @@ function markMessagesAsRead(userId, chatId) {
     }
   );
 }
+
+// API endpoint to create a new group
+app.post('/api/groups', (req, res) => {
+  const { name, createdBy, participants } = req.body;
+  
+  if (!name || !createdBy || !participants || participants.length === 0) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+  
+  // Create the group chat
+  db.run(
+    "INSERT INTO chats (name, type, created_by) VALUES (?, 'group', ?)",
+    [name, createdBy],
+    function(err) {
+      if (err) {
+        console.error('Error creating group:', err.message);
+        res.status(500).json({ error: 'Failed to create group' });
+        return;
+      }
+      
+      const groupId = this.lastID;
+      console.log(`✅ Created group: ${name} with ID: ${groupId}`);
+      
+      // Add creator as admin
+      db.run(
+        "INSERT INTO chat_participants (chat_id, user_id, is_admin) VALUES (?, ?, 1)",
+        [groupId, createdBy],
+        (err) => {
+          if (err) {
+            console.error('Error adding group creator:', err.message);
+          }
+        }
+      );
+      
+      // Add other participants
+      participants.forEach(participantId => {
+        if (participantId !== createdBy) {
+          db.run(
+            "INSERT INTO chat_participants (chat_id, user_id, is_admin) VALUES (?, ?, 0)",
+            [groupId, participantId],
+            (err) => {
+              if (err) {
+                console.error('Error adding participant:', err.message);
+              }
+            }
+          );
+        }
+      });
+      
+      res.json({
+        success: true,
+        groupId: groupId,
+        name: name,
+        type: 'group',
+        participants: participants
+      });
+    }
+  );
+});
+
+// API endpoint to mark messages as read
+app.post('/api/messages/mark-read/:chatId/:userId', (req, res) => {
+  const { chatId, userId } = req.params;
+  
+  // Mark all unread messages in this chat as read
+  db.all(
+    `SELECT m.id 
+     FROM messages m 
+     WHERE m.chat_id = ? 
+     AND m.sender_id != ? 
+     AND m.id NOT IN (
+       SELECT mrs.message_id 
+       FROM message_read_status mrs 
+       WHERE mrs.user_id = ?
+     )`,
+    [chatId, userId, userId],
+    (err, messages) => {
+      if (err) {
+        console.error('Error getting unread messages:', err.message);
+        res.status(500).json({ error: 'Failed to mark messages as read' });
+        return;
+      }
+      
+      // Mark each message as read
+      let completed = 0;
+      if (messages.length === 0) {
+        res.json({ success: true, markedCount: 0 });
+        return;
+      }
+      
+      messages.forEach(message => {
+        db.run(
+          `INSERT OR IGNORE INTO message_read_status (message_id, user_id) 
+           VALUES (?, ?)`,
+          [message.id, userId],
+          (err) => {
+            completed++;
+            if (err) {
+              console.error('Error marking message as read:', err.message);
+            }
+            
+            if (completed === messages.length) {
+              console.log(`✅ Marked ${messages.length} messages as read for user ${userId} in chat ${chatId}`);
+              res.json({ success: true, markedCount: messages.length });
+            }
+          }
+        );
+      });
+    }
+  );
+});
 
 // REST API endpoints
 app.get('/api/users', (req, res) => {
