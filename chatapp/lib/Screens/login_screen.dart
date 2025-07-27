@@ -77,7 +77,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 final user = users[index];
                 return InkWell(
                   onTap: () async {
-                    // Create source chat from selected user
+                   
                     sourceChat = ChatModel(
                       id: user['id'],
                       name: user['name'],
@@ -85,7 +85,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       isGroup: false,
                     );
 
-                    // Load chats for this user
+                   
                     final chats = await ChatService.getChats(user['id']);
 
                     Navigator.pushReplacement(

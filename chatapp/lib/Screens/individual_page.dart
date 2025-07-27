@@ -232,7 +232,7 @@ class _IndividualPageState extends State<IndividualPage>
     });
   }
 
-  // Update message delivery status
+  
   void updateMessageDeliveryStatus(int messageId, bool isDelivered) {
     setState(() {
       final messageIndex = messages.indexWhere((msg) => msg.id == messageId);
@@ -242,7 +242,7 @@ class _IndividualPageState extends State<IndividualPage>
     });
   }
 
-  // Show notification snackbar
+
   void showNotificationSnackBar(String sender, String message) {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -323,7 +323,7 @@ class _IndividualPageState extends State<IndividualPage>
         setState(() {
           file = pickedFile;
         });
-        Navigator.pop(context); // Close the bottom sheet
+        Navigator.pop(context); 
         print('Image captured: ${pickedFile.path}');
 
         // Show success message
@@ -512,7 +512,7 @@ class _IndividualPageState extends State<IndividualPage>
                         }
                       },
                     ),
-                    // child: ListView(children: [OwnFileCard(), ReplyFileCard()]),
+                    
                   ),
                   Align(
                     alignment: Alignment.bottomCenter,
@@ -543,7 +543,7 @@ class _IndividualPageState extends State<IndividualPage>
                                   keyboardType: TextInputType.multiline,
                                   maxLines: 5,
                                   minLines: 1,
-                                  //after typing the message, the send button will appear
+                                
                                   onChanged: (value) {
                                     if (value.length > 0) {
                                       setState(() {
@@ -630,7 +630,7 @@ class _IndividualPageState extends State<IndividualPage>
                                   color: Colors.white,
                                 ),
                                 onPressed: () {
-                                  // Handle send action
+                                  
                                   if (sendButton &&
                                       widget.sourceChat?.id != null &&
                                       widget.chatModel?.id != null &&
@@ -641,9 +641,9 @@ class _IndividualPageState extends State<IndividualPage>
                                       textFieldController.text.trim(),
                                       widget.sourceChat!.id!,
                                       widget.chatModel!.id!,
-                                      '', // Pass an empty string for path if not sending a file
+                                      '', 
                                     );
-                                    // Clear the text field after sending
+                                   
                                     textFieldController.clear();
                                     setState(() {
                                       sendButton = false;
@@ -656,7 +656,7 @@ class _IndividualPageState extends State<IndividualPage>
                         ),
                         isEmojiVisible
                             ? emojiPicker()
-                            : Container(), // Emoji picker widget
+                            : Container(), 
                       ],
                     ),
                   ),
