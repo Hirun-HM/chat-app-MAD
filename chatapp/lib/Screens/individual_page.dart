@@ -16,8 +16,7 @@ import 'package:flutter_svg/svg.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
 
-// Remove this import for now
-// import 'package:permission_handler/permission_handler.dart';
+
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 
 class IndividualPage extends StatefulWidget {
@@ -61,7 +60,7 @@ class _IndividualPageState extends State<IndividualPage>
     super.didChangeAppLifecycleState(state);
 
     if (state == AppLifecycleState.resumed && socket.connected) {
-      // When app resumes and user is in this chat, mark messages as read
+      
       print("📱 App resumed in individual chat - marking messages as read");
       socket.emit("enter_chat", {
         "userId": widget.sourceChat?.id,
@@ -84,21 +83,21 @@ class _IndividualPageState extends State<IndividualPage>
       print("✅ Socket connected with ID: ${socket.id}");
       socket.emit("signin", widget.sourceChat?.id);
 
-      // Join the specific chat room
+      
       if (widget.chatModel?.id != null) {
         socket.emit("join_chat", {
           "chatId": widget.chatModel!.id,
           "userId": widget.sourceChat?.id,
         });
 
-        // Immediately emit enter_chat to mark messages as read
+        
         socket.emit("enter_chat", {
           "userId": widget.sourceChat?.id,
           "chatId": widget.chatModel?.id,
         });
       }
 
-      // Get chat history
+      
       socket.emit("get_chat_history_by_id", {
         "chatId": widget.chatModel?.id,
         "userId": widget.sourceChat?.id,
@@ -106,7 +105,7 @@ class _IndividualPageState extends State<IndividualPage>
 
       socket.on("message", (msg) {
         print("📨 Received message: $msg");
-        // Only add message if it's not from current user to avoid duplicates
+        
         if (msg['senderId'] != widget.sourceChat?.id) {
           setMessage(
             "destination",
@@ -116,7 +115,7 @@ class _IndividualPageState extends State<IndividualPage>
           );
         }
 
-        // Emit read receipt immediately when message is received
+        
         if (msg['id'] != null) {
           socket.emit("message_read", {
             "messageId": msg['id'],
@@ -126,13 +125,13 @@ class _IndividualPageState extends State<IndividualPage>
         }
       });
 
-      // Handle notifications (when user is not in the chat)
+     
       socket.on("notification", (data) {
         print("🔔 Received notification: $data");
         showNotificationSnackBar(data['sender'], data['message']);
       });
 
-      // Handle message read receipts
+      
       socket.on("message_read_receipt", (data) {
         print("👁️ Message read receipt: $data");
         updateMessageReadStatus(data['messageId'], true);
@@ -140,10 +139,10 @@ class _IndividualPageState extends State<IndividualPage>
 
       socket.on("message_sent", (data) {
         print("✅ Message sent confirmation: ${data['id']}");
-        // Update the local message with the server-assigned ID and mark as delivered
+       
         if (data['id'] != null) {
           setState(() {
-            // Find the last message sent by current user and update it
+            
             for (int i = messages.length - 1; i >= 0; i--) {
               if (messages[i].type == "source" && messages[i].id == null) {
                 messages[i].id = data['id'];
@@ -168,19 +167,18 @@ class _IndividualPageState extends State<IndividualPage>
               message: msg['message'],
               path: msg['path'] ?? '',
               time: DateTime.now().toString().substring(10, 16),
-              isDelivered: true, // Assume delivered if in history
-              isRead: msg['isRead'] ?? false, // Use server-provided read status
+              isDelivered: true, 
+              isRead: msg['isRead'] ?? false, 
             );
             messages.add(messageModel);
           }
         });
       });
 
-      // Listen for unread count updates
+     
       socket.on("unread_count_update", (data) {
         print("🔢 Individual page - Unread count update: $data");
-        // This ensures that when the count is cleared on entering chat,
-        // any UI elements that depend on this are updated
+       
       });
     });
 
@@ -197,10 +195,10 @@ class _IndividualPageState extends State<IndividualPage>
   }
 
   void sendMessage(String message, int sourceId, int chatId, String path) {
-    // Add message to local UI immediately for instant feedback
+   
     setMessage("source", message, path);
 
-    // Send message via Socket.IO using the new event
+    
     socket.emit("send_chat_message", {
       "message": message,
       "senderId": sourceId,
@@ -292,10 +290,10 @@ class _IndividualPageState extends State<IndividualPage>
         setState(() {
           file = pickedFile;
         });
-        Navigator.pop(context); // Close the bottom sheet
+        Navigator.pop(context); 
         print('Image selected: ${pickedFile.path}');
 
-        // Show success message
+        
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Image selected successfully!')));
