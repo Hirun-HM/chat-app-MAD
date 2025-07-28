@@ -34,10 +34,10 @@ class _HomeScreenState extends State<HomeScreen>
     WidgetsBinding.instance.addObserver(this);
     _controller = TabController(length: 4, vsync: this, initialIndex: 1);
     connectSocket();
-    // Always refresh chats when the page loads
+    
     refreshChats();
 
-    // Set up periodic refresh every 30 seconds to ensure data stays fresh
+    
     _refreshTimer = Timer.periodic(Duration(seconds: 1), (timer) {
       if (mounted) {
         print("⏰ Periodic refresh triggered");
