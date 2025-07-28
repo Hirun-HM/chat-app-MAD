@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:chatapp/Model/chat_model.dart';
 import 'package:chatapp/Services/chat_service.dart';
+import 'package:chatapp/config/app_config.dart' as app_config;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -216,7 +217,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             shape: BoxShape.circle,
             image: DecorationImage(
               image: NetworkImage(
-                'http://192.168.1.3:8000/uploads/${_currentAvatar!}',
+                '${app_config.Config.baseUrl}/uploads/${_currentAvatar!}',
               ),
               fit: BoxFit.cover,
             ),

@@ -10,12 +10,12 @@ import 'package:chatapp/Screens/camera_screen.dart';
 import 'package:chatapp/Screens/camera_view.dart';
 import 'package:chatapp/Screens/share_contact_screen.dart';
 import 'package:chatapp/Screens/qr_scanner_screen.dart';
+import 'package:chatapp/config/app_config.dart' as app_config;
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
-
 
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 
@@ -60,7 +60,6 @@ class _IndividualPageState extends State<IndividualPage>
     super.didChangeAppLifecycleState(state);
 
     if (state == AppLifecycleState.resumed && socket.connected) {
-      
       print("📱 App resumed in individual chat - marking messages as read");
       socket.emit("enter_chat", {
         "userId": widget.sourceChat?.id,
@@ -71,7 +70,7 @@ class _IndividualPageState extends State<IndividualPage>
 
   void connect() {
     socket = IO.io(
-      "http://192.168.1.3:8000",
+      app_config.Config.socketUrl,
       IO.OptionBuilder()
           .setTransports(['websocket'])
           .enableForceNew()
@@ -83,21 +82,18 @@ class _IndividualPageState extends State<IndividualPage>
       print("✅ Socket connected with ID: ${socket.id}");
       socket.emit("signin", widget.sourceChat?.id);
 
-      
       if (widget.chatModel?.id != null) {
         socket.emit("join_chat", {
           "chatId": widget.chatModel!.id,
           "userId": widget.sourceChat?.id,
         });
 
-        
         socket.emit("enter_chat", {
           "userId": widget.sourceChat?.id,
           "chatId": widget.chatModel?.id,
         });
       }
 
-      
       socket.emit("get_chat_history_by_id", {
         "chatId": widget.chatModel?.id,
         "userId": widget.sourceChat?.id,
@@ -105,7 +101,7 @@ class _IndividualPageState extends State<IndividualPage>
 
       socket.on("message", (msg) {
         print("📨 Received message: $msg");
-        
+
         if (msg['senderId'] != widget.sourceChat?.id) {
           setMessage(
             "destination",
@@ -115,7 +111,6 @@ class _IndividualPageState extends State<IndividualPage>
           );
         }
 
-        
         if (msg['id'] != null) {
           socket.emit("message_read", {
             "messageId": msg['id'],
@@ -125,13 +120,11 @@ class _IndividualPageState extends State<IndividualPage>
         }
       });
 
-     
       socket.on("notification", (data) {
         print("🔔 Received notification: $data");
         showNotificationSnackBar(data['sender'], data['message']);
       });
 
-      
       socket.on("message_read_receipt", (data) {
         print("👁️ Message read receipt: $data");
         updateMessageReadStatus(data['messageId'], true);
@@ -139,10 +132,9 @@ class _IndividualPageState extends State<IndividualPage>
 
       socket.on("message_sent", (data) {
         print("✅ Message sent confirmation: ${data['id']}");
-       
+
         if (data['id'] != null) {
           setState(() {
-            
             for (int i = messages.length - 1; i >= 0; i--) {
               if (messages[i].type == "source" && messages[i].id == null) {
                 messages[i].id = data['id'];
@@ -167,18 +159,16 @@ class _IndividualPageState extends State<IndividualPage>
               message: msg['message'],
               path: msg['path'] ?? '',
               time: DateTime.now().toString().substring(10, 16),
-              isDelivered: true, 
-              isRead: msg['isRead'] ?? false, 
+              isDelivered: true,
+              isRead: msg['isRead'] ?? false,
             );
             messages.add(messageModel);
           }
         });
       });
 
-     
       socket.on("unread_count_update", (data) {
         print("🔢 Individual page - Unread count update: $data");
-       
       });
     });
 
@@ -195,10 +185,8 @@ class _IndividualPageState extends State<IndividualPage>
   }
 
   void sendMessage(String message, int sourceId, int chatId, String path) {
-   
     setMessage("source", message, path);
 
-    
     socket.emit("send_chat_message", {
       "message": message,
       "senderId": sourceId,
@@ -232,7 +220,6 @@ class _IndividualPageState extends State<IndividualPage>
     });
   }
 
-  
   void updateMessageDeliveryStatus(int messageId, bool isDelivered) {
     setState(() {
       final messageIndex = messages.indexWhere((msg) => msg.id == messageId);
@@ -241,7 +228,6 @@ class _IndividualPageState extends State<IndividualPage>
       }
     });
   }
-
 
   void showNotificationSnackBar(String sender, String message) {
     if (mounted) {
@@ -290,10 +276,9 @@ class _IndividualPageState extends State<IndividualPage>
         setState(() {
           file = pickedFile;
         });
-        Navigator.pop(context); 
+        Navigator.pop(context);
         print('Image selected: ${pickedFile.path}');
 
-        
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Image selected successfully!')));
@@ -323,7 +308,7 @@ class _IndividualPageState extends State<IndividualPage>
         setState(() {
           file = pickedFile;
         });
-        Navigator.pop(context); 
+        Navigator.pop(context);
         print('Image captured: ${pickedFile.path}');
 
         // Show success message
@@ -512,7 +497,6 @@ class _IndividualPageState extends State<IndividualPage>
                         }
                       },
                     ),
-                    
                   ),
                   Align(
                     alignment: Alignment.bottomCenter,
@@ -543,7 +527,7 @@ class _IndividualPageState extends State<IndividualPage>
                                   keyboardType: TextInputType.multiline,
                                   maxLines: 5,
                                   minLines: 1,
-                                
+
                                   onChanged: (value) {
                                     if (value.length > 0) {
                                       setState(() {
@@ -630,7 +614,6 @@ class _IndividualPageState extends State<IndividualPage>
                                   color: Colors.white,
                                 ),
                                 onPressed: () {
-                                  
                                   if (sendButton &&
                                       widget.sourceChat?.id != null &&
                                       widget.chatModel?.id != null &&
@@ -641,9 +624,9 @@ class _IndividualPageState extends State<IndividualPage>
                                       textFieldController.text.trim(),
                                       widget.sourceChat!.id!,
                                       widget.chatModel!.id!,
-                                      '', 
+                                      '',
                                     );
-                                   
+
                                     textFieldController.clear();
                                     setState(() {
                                       sendButton = false;
@@ -654,9 +637,7 @@ class _IndividualPageState extends State<IndividualPage>
                             ),
                           ],
                         ),
-                        isEmojiVisible
-                            ? emojiPicker()
-                            : Container(), 
+                        isEmojiVisible ? emojiPicker() : Container(),
                       ],
                     ),
                   ),

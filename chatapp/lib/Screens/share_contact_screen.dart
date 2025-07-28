@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:http/http.dart' as http;
+import '../config/app_config.dart' as app_config;
 
 class ShareContactScreen extends StatefulWidget {
   final int userId;
@@ -32,7 +33,7 @@ class _ShareContactScreenState extends State<ShareContactScreen> {
   Future<void> generateQRCode() async {
     try {
       final response = await http.get(
-        Uri.parse('http://10.0.2.2:8000/api/qr-code/${widget.userId}'),
+        Uri.parse('${app_config.Config.apiUrl}/qr-code/${widget.userId}'),
         headers: {'Content-Type': 'application/json'},
       );
 

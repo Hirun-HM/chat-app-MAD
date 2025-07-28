@@ -5,6 +5,7 @@ import 'package:chatapp/Model/chat_model.dart';
 import 'package:chatapp/Screens/individual_page.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
+import '../config/app_config.dart' as app_config;
 
 class QRScannerScreen extends StatefulWidget {
   final int currentUserId;
@@ -138,7 +139,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
     try {
       // First, try to find user by phone number
       final response = await http.get(
-        Uri.parse('http://10.0.2.2:8000/api/users/phone/$phoneNumber'),
+        Uri.parse('${app_config.Config.apiUrl}/users/phone/$phoneNumber'),
       );
 
       if (response.statusCode == 200) {
@@ -165,7 +166,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
   ) async {
     try {
       final response = await http.post(
-        Uri.parse('http://10.0.2.2:8000/api/chats/individual'),
+        Uri.parse('${app_config.Config.apiUrl}/chats/individual'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({
           'sourceId': widget.currentUserId,

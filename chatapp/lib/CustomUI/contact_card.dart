@@ -1,4 +1,5 @@
 import 'package:chatapp/Model/chat_model.dart';
+import 'package:chatapp/config/app_config.dart' as app_config;
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 
@@ -24,7 +25,7 @@ class ContactCard extends StatelessWidget {
                 backgroundImage:
                     contact?.icon != null && contact!.icon!.isNotEmpty
                     ? NetworkImage(
-                        'http://192.168.1.3:8000/uploads/${contact!.icon!}',
+                        '${app_config.Config.baseUrl}/uploads/${contact!.icon!}',
                       )
                     : null,
                 child: contact?.icon == null || contact!.icon!.isEmpty

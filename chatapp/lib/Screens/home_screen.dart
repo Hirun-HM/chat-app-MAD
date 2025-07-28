@@ -6,6 +6,7 @@ import 'package:chatapp/Services/chat_service.dart';
 import 'package:chatapp/Screens/settings_screen.dart';
 import 'package:chatapp/Screens/qr_scanner_screen.dart';
 import 'package:chatapp/Screens/share_contact_screen.dart';
+import 'package:chatapp/config/app_config.dart' as app_config;
 import 'package:flutter/material.dart';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 
@@ -48,7 +49,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   void connectSocket() {
     socket = IO.io(
-      "http://192.168.1.3:8000",
+      app_config.Config.socketUrl,
       IO.OptionBuilder()
           .setTransports(['websocket'])
           .enableForceNew()

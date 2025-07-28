@@ -215,7 +215,7 @@ function insertSampleData() {
 }
 
 function createSampleChats() {
-  // Create individual chats
+ 
   db.run(
     "INSERT INTO chats (name, type, created_by) VALUES (?, ?, ?)",
     ['Chat with Jane', 'individual', 1],
@@ -224,7 +224,7 @@ function createSampleChats() {
         console.error('Error creating chat:', err.message);
       } else {
         const chatId = this.lastID;
-        // Add participants
+        
         db.run("INSERT INTO chat_participants (chat_id, user_id) VALUES (?, ?)", [chatId, 1]);
         db.run("INSERT INTO chat_participants (chat_id, user_id) VALUES (?, ?)", [chatId, 2]);
         console.log(`✅ Created individual chat with ID: ${chatId}`);
@@ -232,7 +232,7 @@ function createSampleChats() {
     }
   );
 
-  // Create a group chat
+ 
   db.run(
     "INSERT INTO chats (name, type, created_by) VALUES (?, ?, ?)",
     ['University Group', 'group', 1],
@@ -241,7 +241,7 @@ function createSampleChats() {
         console.error('Error creating group chat:', err.message);
       } else {
         const chatId = this.lastID;
-        // Add participants
+        
         [1, 2, 3, 4].forEach(userId => {
           db.run("INSERT INTO chat_participants (chat_id, user_id, is_admin) VALUES (?, ?, ?)", 
             [chatId, userId, userId === 1]);
@@ -252,27 +252,27 @@ function createSampleChats() {
   );
 }
 
-// Store connected users and their socket IDs
+
 const connectedUsers = new Map();
 
-// Socket.IO connection handling
+
 io.on('connection', (socket) => {
   console.log(`🔌 User connected: ${socket.id}`);
 
-  // Handle user signin
+  
   socket.on('signin', (userId) => {
     console.log(`👤 User ${userId} signed in with socket ${socket.id}`);
     connectedUsers.set(userId, socket.id);
     socket.userId = userId;
     
-    // Update user status to online
+    
     db.run("UPDATE users SET status = 'online' WHERE id = ?", [userId], (err) => {
       if (err) {
         console.error('Error updating user status:', err.message);
       }
     });
 
-    // Join user to their chat rooms and send chat history
+   
     getUserChats(userId, (chats) => {
       chats.forEach(chat => {
         socket.join(`chat_${chat.id}`);
@@ -281,12 +281,12 @@ io.on('connection', (socket) => {
     });
   });
 
-  // Handle user entering a specific chat
+  
   socket.on('enter_chat', (data) => {
     const { userId, chatId } = data;
     console.log(`👤 User ${userId} entered chat ${chatId} - marking messages as read`);
     
-    // Store current chat for the user
+   
     socket.currentChatId = chatId;
     
     // Mark all messages in this chat as read by this user

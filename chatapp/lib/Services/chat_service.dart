@@ -1,9 +1,10 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../Model/chat_model.dart';
+import '../config/app_config.dart';
 
 class ChatService {
-  static const String baseUrl = 'http://192.168.1.3:8000/api';
+  static String get baseUrl => Config.apiUrl;
 
   // Fetch chats for a specific user
   static Future<List<ChatModel>> getChats(int userId) async {
