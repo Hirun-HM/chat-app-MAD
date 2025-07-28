@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:chatapp/Model/chat_model.dart';
 import 'package:chatapp/NewScreens/call_screen.dart';
 import 'package:chatapp/Pages/camera_page.dart';
@@ -25,6 +26,7 @@ class _HomeScreenState extends State<HomeScreen>
   List<ChatModel> chats = [];
   bool isLoading = true;
   late IO.Socket socket;
+  Timer? _refreshTimer;
 
   @override
   void initState() {
@@ -34,6 +36,14 @@ class _HomeScreenState extends State<HomeScreen>
     connectSocket();
     // Always refresh chats when the page loads
     refreshChats();
+
+    // Set up periodic refresh every 30 seconds to ensure data stays fresh
+    _refreshTimer = Timer.periodic(Duration(seconds: 1), (timer) {
+      if (mounted) {
+        print("⏰ Periodic refresh triggered");
+        forceRefreshChats();
+      }
+    });
   }
 
   @override
@@ -98,12 +108,12 @@ class _HomeScreenState extends State<HomeScreen>
             } else {
               // If chat not found, refresh the entire list
               print("🔄 Chat not found in list, refreshing...");
-              loadChats();
+              forceRefreshChats();
             }
           });
         } else {
           // Fallback to full refresh if no chatId provided
-          loadChats();
+          forceRefreshChats();
         }
       });
 
@@ -124,10 +134,103 @@ class _HomeScreenState extends State<HomeScreen>
           });
         }
       });
+
+      // Listen for new messages in other chats (when not actively in that chat)
+      socket.on("message", (data) {
+        print("📨 Home screen received message notification: $data");
+
+        // Only handle if this message is for a different chat than what user is currently viewing
+        if (data['chatId'] != null &&
+            data['senderId'] != widget.sourceChat?.id) {
+          setState(() {
+            final chatIndex = chats.indexWhere(
+              (chat) => chat.id == data['chatId'],
+            );
+            if (chatIndex != -1) {
+              final updatedChat = chats[chatIndex];
+              updatedChat.currentMessage =
+                  data['message'] ?? updatedChat.currentMessage;
+              updatedChat.time =
+                  _formatTime(data['sentAt']) ?? updatedChat.time;
+              updatedChat.unreadCount = (updatedChat.unreadCount ?? 0) + 1;
+              updatedChat.isLastMessageFromCurrentUser = false;
+              updatedChat.lastSenderId = data['senderId'];
+
+              // Move this chat to the top (most recent)
+              chats.removeAt(chatIndex);
+              chats.insert(0, updatedChat);
+
+              print(
+                "✅ Updated chat list for new message in chat ${data['chatId']}",
+              );
+            } else {
+              // New chat might have been created, refresh the list
+              print("🔄 New message in unknown chat, refreshing list...");
+              forceRefreshChats();
+            }
+          });
+        }
+      });
+
+      // Listen for notifications
+      socket.on("notification", (data) {
+        print("🔔 Home screen received notification: $data");
+
+        // Show notification to user
+        if (mounted && data['type'] == 'new_message') {
+          final message = data['message']?.toString() ?? 'New message';
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  Icon(Icons.notifications, color: Colors.white),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          data['sender'] ?? 'New Message',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        Text(
+                          message.length > 50
+                              ? '${message.substring(0, 50)}...'
+                              : message,
+                          style: TextStyle(fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              backgroundColor: Color(0xff075E54),
+              duration: Duration(seconds: 3),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      });
+
+      // Listen for user status changes
+      socket.on("user_status_change", (data) {
+        print("👤 User status change: $data");
+
+        // For now, just log the status change
+        // We can implement more detailed status updates later
+        if (data['userId'] != null) {
+          print("User ${data['userId']} is now ${data['status']}");
+        }
+      });
     });
 
     socket.onConnectError((data) {
       print("❌ Home screen socket error: $data");
+    });
+
+    socket.onDisconnect((_) {
+      print("🔌 Home screen socket disconnected");
     });
   }
 
@@ -161,6 +264,12 @@ class _HomeScreenState extends State<HomeScreen>
     setState(() {
       isLoading = true;
     });
+    loadChats();
+  }
+
+  // Force refresh chats (for use in socket events)
+  void forceRefreshChats() {
+    print("🔄 Force refreshing chat list from socket event...");
     loadChats();
   }
 
@@ -343,6 +452,7 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _refreshTimer?.cancel();
     if (socket.connected) {
       socket.disconnect();
     }

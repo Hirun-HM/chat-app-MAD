@@ -34,6 +34,7 @@ class _IndividualPageState extends State<IndividualPage>
   FocusNode textFieldFocusNode = FocusNode();
   late IO.Socket socket;
   TextEditingController textFieldController = TextEditingController();
+  ScrollController scrollController = ScrollController();
   bool sendButton = false;
   List<MessageModel> messages = [];
   ImagePicker _picker = ImagePicker();
@@ -60,10 +61,20 @@ class _IndividualPageState extends State<IndividualPage>
     super.didChangeAppLifecycleState(state);
 
     if (state == AppLifecycleState.resumed && socket.connected) {
-      print("📱 App resumed in individual chat - marking messages as read");
+      print(
+        "📱 App resumed in individual chat - marking messages as read and refreshing",
+      );
+
+      // Re-emit enter chat to mark messages as read
       socket.emit("enter_chat", {
         "userId": widget.sourceChat?.id,
         "chatId": widget.chatModel?.id,
+      });
+
+      // Refresh chat history to get any new messages
+      socket.emit("get_chat_history_by_id", {
+        "chatId": widget.chatModel?.id,
+        "userId": widget.sourceChat?.id,
       });
     }
   }
@@ -77,7 +88,6 @@ class _IndividualPageState extends State<IndividualPage>
           .enableAutoConnect()
           .build(),
     );
-
     socket.onConnect((_) {
       print("✅ Socket connected with ID: ${socket.id}");
       socket.emit("signin", widget.sourceChat?.id);
@@ -92,16 +102,18 @@ class _IndividualPageState extends State<IndividualPage>
           "userId": widget.sourceChat?.id,
           "chatId": widget.chatModel?.id,
         });
-      }
 
-      socket.emit("get_chat_history_by_id", {
-        "chatId": widget.chatModel?.id,
-        "userId": widget.sourceChat?.id,
-      });
+        // Always request chat history when connecting
+        socket.emit("get_chat_history_by_id", {
+          "chatId": widget.chatModel?.id,
+          "userId": widget.sourceChat?.id,
+        });
+      }
 
       socket.on("message", (msg) {
         print("📨 Received message: $msg");
 
+        // Add message to the chat only if it's not from the current user
         if (msg['senderId'] != widget.sourceChat?.id) {
           setMessage(
             "destination",
@@ -109,9 +121,17 @@ class _IndividualPageState extends State<IndividualPage>
             msg['path'] ?? '',
             msg['id'],
           );
+
+          // Auto-scroll to bottom when receiving new message
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              scrollToBottom();
+            }
+          });
         }
 
-        if (msg['id'] != null) {
+        // Mark message as read if user is currently in this chat
+        if (msg['id'] != null && msg['chatId'] == widget.chatModel?.id) {
           socket.emit("message_read", {
             "messageId": msg['id'],
             "userId": widget.sourceChat?.id,
@@ -165,6 +185,13 @@ class _IndividualPageState extends State<IndividualPage>
             messages.add(messageModel);
           }
         });
+
+        // Auto-scroll to bottom after loading history
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            scrollToBottom();
+          }
+        });
       });
 
       socket.on("unread_count_update", (data) {
@@ -180,6 +207,16 @@ class _IndividualPageState extends State<IndividualPage>
       print("❌ Socket Error: $data");
     });
 
+    socket.onReconnect((_) {
+      print("🔄 Socket reconnected - refreshing chat");
+      if (widget.chatModel?.id != null) {
+        socket.emit("get_chat_history_by_id", {
+          "chatId": widget.chatModel?.id,
+          "userId": widget.sourceChat?.id,
+        });
+      }
+    });
+
     socket.connect();
     print("🔄 Connecting to socket...");
   }
@@ -192,6 +229,12 @@ class _IndividualPageState extends State<IndividualPage>
       "senderId": sourceId,
       "chatId": chatId,
       "path": path,
+    });
+
+    // Clear the text field after sending
+    textFieldController.clear();
+    setState(() {
+      sendButton = false;
     });
   }
 
@@ -208,6 +251,22 @@ class _IndividualPageState extends State<IndividualPage>
     setState(() {
       messages.add(messageModel);
     });
+
+    // Auto-scroll to bottom when new message is added
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      scrollToBottom();
+    });
+  }
+
+  // Scroll to bottom of the message list
+  void scrollToBottom() {
+    if (scrollController.hasClients) {
+      scrollController.animateTo(
+        scrollController.position.maxScrollExtent,
+        duration: Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    }
   }
 
   // Update message read status
@@ -263,7 +322,7 @@ class _IndividualPageState extends State<IndividualPage>
   }
 
   // Simplified image picker methods without permission_handler
-  Future<void> _pickImageFromGallery() async {
+  Future<void> pickImageFromGallery() async {
     try {
       final XFile? pickedFile = await _picker.pickImage(
         source: ImageSource.gallery,
@@ -295,7 +354,7 @@ class _IndividualPageState extends State<IndividualPage>
     }
   }
 
-  Future<void> _pickImageFromCamera() async {
+  Future<void> pickImageFromCamera() async {
     try {
       final XFile? pickedFile = await _picker.pickImage(
         source: ImageSource.camera,
@@ -467,6 +526,7 @@ class _IndividualPageState extends State<IndividualPage>
                   Expanded(
                     // height: MediaQuery.of(context).size.height - 144,
                     child: ListView.builder(
+                      controller: scrollController,
                       shrinkWrap: true,
                       itemCount: messages.length,
                       itemBuilder: (context, index) {
@@ -808,6 +868,9 @@ class _IndividualPageState extends State<IndividualPage>
   void dispose() {
     super.dispose();
     WidgetsBinding.instance.removeObserver(this);
+    scrollController.dispose();
+    textFieldController.dispose();
+    textFieldFocusNode.dispose();
     socket.dispose();
   }
 

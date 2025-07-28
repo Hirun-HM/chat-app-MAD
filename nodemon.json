@@ -1,0 +1,14 @@
+{
+  "watch": ["server.js"],
+  "ignore": [
+    "node_modules/*",
+    "chatapp/*",
+    "public/*",
+    "*.db",
+    "*.log",
+    ".git/*",
+    "*.md"
+  ],
+  "ext": "js,json",
+  "delay": 1000
+}
