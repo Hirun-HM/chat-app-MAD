@@ -1114,11 +1114,11 @@ app.post('/api/chats/individual', (req, res) => {
   });
 });
 
-// API endpoint to mark messages as read
+
 app.post('/api/messages/mark-read/:chatId/:userId', (req, res) => {
   const { chatId, userId } = req.params;
   
-  // Mark all unread messages in this chat as read
+  
   db.all(
     `SELECT m.id 
      FROM messages m 
@@ -1398,12 +1398,12 @@ app.get('/api/messages/:chatId', (req, res) => {
   );
 });
 
-// API endpoint to generate QR code for user contact
+
 app.get('/api/qr-code/:userId', async (req, res) => {
   const userId = req.params.userId;
   
   try {
-    // Get user details
+   
     db.get(
       "SELECT id, name, phone FROM users WHERE id = ?",
       [userId],
@@ -1417,8 +1417,7 @@ app.get('/api/qr-code/:userId', async (req, res) => {
           res.status(404).json({ error: 'User not found' });
           return;
         }
-        
-        // Create WhatsApp link for QR code
+       
         const whatsAppLink = `https://wa.me/${user.phone.replace('+', '')}`;
         
         // Also create contact data as backup
