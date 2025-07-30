@@ -995,7 +995,7 @@ function markMessagesAsRead(userId, chatId) {
         return;
       }
       
-      // Mark each message as read
+      
       messages.forEach(message => {
         db.run(
           `INSERT OR IGNORE INTO message_read_status (message_id, user_id, read_at) 
@@ -1013,7 +1013,7 @@ function markMessagesAsRead(userId, chatId) {
         console.log(`✅ Marked ${messages.length} messages as read for user ${userId} in chat ${chatId}`);
       }
       
-      // Always emit unread count update to ensure UI is synced, regardless of whether there were messages to mark
+
       const userSocketId = connectedUsers.get(userId);
       if (userSocketId) {
         const userSocket = io.sockets.sockets.get(userSocketId);
@@ -1030,7 +1030,7 @@ function markMessagesAsRead(userId, chatId) {
   );
 }
 
-// API endpoint to create a new group
+
 app.post('/api/groups', (req, res) => {
   const { name, createdBy, participants } = req.body;
   
@@ -1038,7 +1038,7 @@ app.post('/api/groups', (req, res) => {
     return res.status(400).json({ error: 'Missing required fields' });
   }
   
-  // Create the group chat
+ 
   db.run(
     "INSERT INTO chats (name, type, created_by) VALUES (?, 'group', ?)",
     [name, createdBy],
@@ -1052,7 +1052,7 @@ app.post('/api/groups', (req, res) => {
       const groupId = this.lastID;
       console.log(`✅ Created group: ${name} with ID: ${groupId}`);
       
-      // Add creator as admin
+    
       db.run(
         "INSERT INTO chat_participants (chat_id, user_id, is_admin) VALUES (?, ?, 1)",
         [groupId, createdBy],
@@ -1063,7 +1063,7 @@ app.post('/api/groups', (req, res) => {
         }
       );
       
-      // Add other participants
+     
       participants.forEach(participantId => {
         if (participantId !== createdBy) {
           db.run(
@@ -1089,7 +1089,7 @@ app.post('/api/groups', (req, res) => {
   );
 });
 
-// API endpoint to create or find individual chat
+
 app.post('/api/chats/individual', (req, res) => {
   const { sourceId, targetId } = req.body;
   
@@ -1209,19 +1209,19 @@ app.post('/api/messages', (req, res) => {
             }
           );
           
-          // Get all participants in this chat for real-time updates
+          
           getChatParticipants(chatId, (participants) => {
-            // Broadcast message to all connected participants
+           
             participants.forEach(participantId => {
               const participantSocketId = connectedUsers.get(participantId);
               if (participantSocketId) {
                 const participantSocket = io.sockets.sockets.get(participantSocketId);
                 if (participantSocket) {
-                  // Check if user is currently in this chat
+                  
                   const isInChat = participantSocket.currentChatId === chatId;
                   
                   if (participantId !== senderId) {
-                    // Send message to other participants
+                   
                     participantSocket.emit('message', {
                       id: messageData.id,
                       message: messageData.message_text,
@@ -1233,7 +1233,7 @@ app.post('/api/messages', (req, res) => {
                       chatId: chatId
                     });
                     
-                    // Send notification if user is not in this chat
+                    
                     if (!isInChat) {
                       participantSocket.emit('notification', {
                         type: 'new_message',
@@ -1245,7 +1245,7 @@ app.post('/api/messages', (req, res) => {
                     }
                   }
                   
-                  // Update chat list for all participants
+                 
                   participantSocket.emit('chat_list_update', {
                     chatId: chatId,
                     lastMessage: messageData.message_text,
@@ -1276,7 +1276,7 @@ app.post('/api/messages', (req, res) => {
   );
 });
 
-// REST API endpoints
+
 app.get('/api/users', (req, res) => {
   db.all("SELECT id, name, phone, avatar, status FROM users", (err, rows) => {
     if (err) {
