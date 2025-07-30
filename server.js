@@ -651,7 +651,7 @@ io.on('connection', (socket) => {
               chatId: chatId
             });
             
-            // Get all participants in this chat for notifications and chat list updates
+            
             getChatParticipants(chatId, (participants) => {
               participants.forEach(participantId => {
                 const participantSocketId = connectedUsers.get(participantId);
@@ -1548,11 +1548,11 @@ app.post('/api/groups/:groupId/icon', upload.single('icon'), (req, res) => {
   );
 });
 
-// API endpoint to delete a chat
+
 app.delete('/api/chats/:chatId/:userId', (req, res) => {
   const { chatId, userId } = req.params;
   
-  // First check if user is a participant in this chat
+  
   db.get(
     "SELECT * FROM chat_participants WHERE chat_id = ? AND user_id = ?",
     [chatId, userId],
