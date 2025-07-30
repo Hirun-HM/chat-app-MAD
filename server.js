@@ -548,7 +548,7 @@ io.on('connection', (socket) => {
                           
                           console.log(`🔔 Notification sent to user ${participantId} from ${messageData.sender_name}`);
                         } else {
-                          // User is in chat, just update their chat list
+                         
                           participantSocket.emit('chat_list_update', {
                             chatId: chatId,
                             lastMessage: messageData.message_text,
@@ -561,7 +561,7 @@ io.on('connection', (socket) => {
                   });
                 });
                 
-                // Also emit to sender for confirmation
+                
                 socket.emit('message_sent', {
                   id: messageData.id,
                   message: messageData.message_text,
@@ -570,7 +570,7 @@ io.on('connection', (socket) => {
                   chatId: chatId
                 });
                 
-                // Update sender's chat list too
+               
                 socket.emit('chat_list_update', {
                   chatId: chatId,
                   lastMessage: messageData.message_text,
@@ -1137,7 +1137,7 @@ app.post('/api/messages/mark-read/:chatId/:userId', (req, res) => {
         return;
       }
       
-      // Mark each message as read
+     
       let completed = 0;
       if (messages.length === 0) {
         res.json({ success: true, markedCount: 0 });
@@ -1166,7 +1166,7 @@ app.post('/api/messages/mark-read/:chatId/:userId', (req, res) => {
   );
 });
 
-// REST API endpoint for sending messages (for testing purposes)
+
 app.post('/api/messages', (req, res) => {
   const { chatId, senderId, messageText, messageType = 'text', filePath = '' } = req.body;
   
@@ -1174,7 +1174,7 @@ app.post('/api/messages', (req, res) => {
     return res.status(400).json({ error: 'Missing required fields: chatId, senderId, messageText' });
   }
   
-  // Save message to database
+
   db.run(
     `INSERT INTO messages (chat_id, sender_id, message_text, message_type, file_path, sent_at) 
      VALUES (?, ?, ?, ?, ?, datetime('now'))`,
@@ -1185,7 +1185,7 @@ app.post('/api/messages', (req, res) => {
         return res.status(500).json({ error: 'Failed to save message' });
       }
       
-      // Get the complete message data
+     
       db.get(
         `SELECT m.*, u.name as sender_name 
          FROM messages m 
@@ -1198,7 +1198,7 @@ app.post('/api/messages', (req, res) => {
             return res.status(500).json({ error: 'Failed to retrieve message' });
           }
           
-          // Update chat's last message timestamp
+          
           db.run(
             "UPDATE chats SET updated_at = datetime('now') WHERE id = ?",
             [chatId],
