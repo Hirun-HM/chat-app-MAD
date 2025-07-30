@@ -430,7 +430,7 @@ io.on('connection', (socket) => {
     );
   });
 
-  // Handle joining a specific chat room
+  
   socket.on('join_chat', (data) => {
     const { chatId, userId } = data;
     console.log(`👤 User ${userId} joining chat room: chat_${chatId}`);
@@ -440,7 +440,7 @@ io.on('connection', (socket) => {
       return;
     }
     
-    // Verify user is a participant in this chat
+   
     db.get(
       "SELECT 1 FROM chat_participants WHERE chat_id = ? AND user_id = ?",
       [chatId, userId],
@@ -455,11 +455,11 @@ io.on('connection', (socket) => {
           return;
         }
         
-        // Join the chat room
+        
         socket.join(`chat_${chatId}`);
         console.log(`✅ User ${userId} joined chat room: chat_${chatId}`);
         
-        // Notify other users in the chat
+      
         socket.to(`chat_${chatId}`).emit('user_joined_chat', {
           userId: userId,
           chatId: chatId
@@ -505,18 +505,18 @@ io.on('connection', (socket) => {
                   return;
                 }
                 
-                // Get all participants in this chat
+               
                 getChatParticipants(chatId, (participants) => {
-                  // Broadcast message to all participants in the chat
+                 
                   participants.forEach(participantId => {
                     const participantSocketId = connectedUsers.get(participantId);
                     if (participantSocketId && participantId !== sourceId) {
                       const participantSocket = io.sockets.sockets.get(participantSocketId);
                       if (participantSocket) {
-                        // Check if user is currently in this chat
+                       
                         const isInChat = participantSocket.currentChatId === chatId;
                         
-                        // Send message
+                      
                         participantSocket.emit('message', {
                           id: messageData.id,
                           message: messageData.message_text,
@@ -528,7 +528,7 @@ io.on('connection', (socket) => {
                           chatId: chatId
                         });
                         
-                        // Send notification if user is not in this chat
+                       
                         if (!isInChat) {
                           participantSocket.emit('notification', {
                             type: 'new_message',
@@ -538,7 +538,7 @@ io.on('connection', (socket) => {
                             sentAt: messageData.sent_at
                           });
                           
-                          // Also emit chat list update event
+                          
                           participantSocket.emit('chat_list_update', {
                             chatId: chatId,
                             lastMessage: messageData.message_text,
@@ -591,7 +591,7 @@ io.on('connection', (socket) => {
     });
   });
 
-  // Handle sending messages to a specific chat
+
   socket.on('send_chat_message', (data) => {
     console.log('📨 Received chat message:', data);
     
@@ -602,7 +602,7 @@ io.on('connection', (socket) => {
       return;
     }
     
-    // Save message to database
+   
     const messageType = path && path !== '' ? getMessageType(path) : 'text';
     
     db.run(
@@ -617,7 +617,7 @@ io.on('connection', (socket) => {
         
         console.log(`✅ Message saved with ID: ${this.lastID}`);
         
-        // Get the complete message data
+       
         db.get(
           `SELECT m.*, u.name as sender_name 
            FROM messages m 
