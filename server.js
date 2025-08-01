@@ -9,7 +9,7 @@ const multer = require('multer');
 const fs = require('fs');
 const QRCode = require('qrcode');
 
-// Configure multer for file uploads
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const uploadDir = path.join(__dirname, 'public', 'uploads');
@@ -45,12 +45,12 @@ const io = socketIo(server, {
   }
 });
 
-// Middleware
+
 app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
 
-// Database setup
+
 const dbPath = path.join(__dirname, 'chatapp.db');
 const db = new sqlite3.Database(dbPath, (err) => {
   if (err) {
@@ -61,9 +61,9 @@ const db = new sqlite3.Database(dbPath, (err) => {
   }
 });
 
-// Initialize database tables
+
 function initializeDatabase() {
-  // Users table
+  
   db.run(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -82,7 +82,7 @@ function initializeDatabase() {
     }
   });
 
-  // Chats table (for individual and group chats)
+  
   db.run(`
     CREATE TABLE IF NOT EXISTS chats (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -102,7 +102,7 @@ function initializeDatabase() {
     }
   });
 
-  // Chat participants table (many-to-many relationship)
+  
   db.run(`
     CREATE TABLE IF NOT EXISTS chat_participants (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -171,9 +171,9 @@ function createMessageReadStatusTable() {
   });
 }
 
-// Insert sample data for testing
+
 function insertSampleData() {
-  // Check if we already have sample users
+  
   db.get("SELECT COUNT(*) as count FROM users", (err, row) => {
     if (err) {
       console.error('Error checking users:', err.message);
@@ -183,7 +183,7 @@ function insertSampleData() {
     if (row.count === 0) {
       console.log('📝 Inserting sample data...');
       
-      // Insert sample users with Sri Lankan phone numbers
+     
       const users = [
         { name: 'John Doe', phone: '+94719162128', avatar: 'person.svg' },
         { name: 'Jane Smith', phone: '+94741377070', avatar: 'person.svg' },
@@ -202,7 +202,7 @@ function insertSampleData() {
             } else {
               console.log(`✅ Inserted user: ${user.name} with ID: ${this.lastID}`);
               
-              // After inserting all users, create some sample chats
+             
               if (index === users.length - 1) {
                 setTimeout(createSampleChats, 500);
               }
@@ -299,29 +299,29 @@ io.on('connection', (socket) => {
     });
   });
 
-  // Handle user leaving a specific chat
+
   socket.on('leave_chat', (data) => {
     const { userId, chatId } = data;
     console.log(`👤 User ${userId} left chat ${chatId}`);
     
-    // Clear current chat for the user
+  
     socket.currentChatId = null;
     
-    // Notify other users in the chat that this user left
+   
     socket.to(`chat_${chatId}`).emit('user_left_chat', {
       userId: userId,
       chatId: chatId
     });
   });
 
-  // Handle request for chat history
+
   socket.on('get_chat_history', (data) => {
     const { sourceId, targetId } = data;
     console.log(`📜 Getting chat history between ${sourceId} and ${targetId}`);
     
     findOrCreateChat(sourceId, targetId, (chatId) => {
       if (chatId) {
-        // Get all messages for this chat
+       
         db.all(
           `SELECT m.*, u.name as sender_name 
            FROM messages m
@@ -344,7 +344,7 @@ io.on('connection', (socket) => {
                   senderId: msg.sender_id,
                   sentAt: msg.sent_at,
                   type: msg.message_type,
-                  // Determine if this message is from the current user
+                
                   messageType: msg.sender_id === sourceId ? 'source' : 'destination'
                 }))
               });
@@ -355,7 +355,7 @@ io.on('connection', (socket) => {
     });
   });
 
-  // Handle getting chat history by chat ID
+ 
   socket.on('get_chat_history_by_id', (data) => {
     const { chatId, userId } = data;
     console.log(`📜 Getting chat history for chat ${chatId} by user ${userId}`);
@@ -365,7 +365,7 @@ io.on('connection', (socket) => {
       return;
     }
     
-    // Verify user is a participant in this chat
+    
     db.get(
       "SELECT 1 FROM chat_participants WHERE chat_id = ? AND user_id = ?",
       [chatId, userId],
@@ -658,10 +658,10 @@ io.on('connection', (socket) => {
                 if (participantSocketId) {
                   const participantSocket = io.sockets.sockets.get(participantSocketId);
                   if (participantSocket) {
-                    // Check if user is currently in this chat
+                    
                     const isInChat = participantSocket.currentChatId === chatId;
                     
-                    // Send notification if user is not in this chat
+                   
                     if (!isInChat && participantId !== senderId) {
                       participantSocket.emit('notification', {
                         type: 'new_message',
@@ -827,12 +827,12 @@ io.on('connection', (socket) => {
   });
 });
 
-// Helper function to format time
+
 function formatTime(timestamp) {
   const date = new Date(timestamp);
   const now = new Date();
   
-  // If it's today, show time
+ 
   if (date.toDateString() === now.toDateString()) {
     return date.toLocaleTimeString('en-US', { 
       hour: '2-digit', 
@@ -841,20 +841,20 @@ function formatTime(timestamp) {
     });
   }
   
-  // If it's this week, show day name
+
   const daysDiff = Math.floor((now - date) / (1000 * 60 * 60 * 24));
   if (daysDiff < 7) {
     return date.toLocaleDateString('en-US', { weekday: 'short' });
   }
   
-  // Otherwise show date
+  
   return date.toLocaleDateString('en-US', { 
     month: 'short', 
     day: 'numeric' 
   });
 }
 
-// Helper functions
+
 function getUserChats(userId, callback) {
   db.all(
     `SELECT DISTINCT c.* 
@@ -875,7 +875,7 @@ function getUserChats(userId, callback) {
 }
 
 function findOrCreateChat(sourceId, targetId, callback) {
-  // First validate that both users exist
+ 
   db.all(
     "SELECT id FROM users WHERE id IN (?, ?)",
     [sourceId, targetId],
@@ -892,7 +892,7 @@ function findOrCreateChat(sourceId, targetId, callback) {
         return;
       }
       
-      // Now find or create chat between valid users
+     
       db.get(
         `SELECT c.id 
          FROM chats c
@@ -913,10 +913,10 @@ function findOrCreateChat(sourceId, targetId, callback) {
             console.error('Error finding chat:', err.message);
             callback(null);
           } else if (row) {
-            // Chat exists
+          
             callback(row.id);
           } else {
-            // Create new chat
+           
             db.run(
               "INSERT INTO chats (type, created_by) VALUES ('individual', ?)",
               [sourceId],
@@ -959,7 +959,7 @@ function getMessageType(filePath) {
   }
 }
 
-// Helper function to get chat participants
+
 function getChatParticipants(chatId, callback) {
   db.all(
     "SELECT user_id FROM chat_participants WHERE chat_id = ?",
@@ -975,9 +975,9 @@ function getChatParticipants(chatId, callback) {
   );
 }
 
-// Helper function to mark messages as read
+
 function markMessagesAsRead(userId, chatId) {
-  // Get all unread messages in this chat for this user
+ 
   db.all(
     `SELECT m.id 
      FROM messages m 
@@ -1362,7 +1362,7 @@ app.get('/api/chats/:userId', (req, res) => {
       if (err) {
         res.status(500).json({ error: err.message });
       } else {
-        // Format the response with better time formatting
+        
         const formattedRows = rows.map(row => ({
           ...row,
           time: row.last_message_time ? formatTime(row.last_message_time) : formatTime(row.updated_at),
@@ -1420,7 +1420,7 @@ app.get('/api/qr-code/:userId', async (req, res) => {
        
         const whatsAppLink = `https://wa.me/${user.phone.replace('+', '')}`;
         
-        // Also create contact data as backup
+       
         const contactData = {
           type: 'contact',
           userId: user.id,
@@ -1430,7 +1430,7 @@ app.get('/api/qr-code/:userId', async (req, res) => {
         };
         
         try {
-          // Generate QR code with WhatsApp link
+         
           const qrCodeDataURL = await QRCode.toDataURL(whatsAppLink, {
             width: 300,
             margin: 2,
@@ -1458,7 +1458,7 @@ app.get('/api/qr-code/:userId', async (req, res) => {
   }
 });
 
-// API endpoint to find user by phone number
+
 app.get('/api/users/phone/:phoneNumber', (req, res) => {
   const phoneNumber = req.params.phoneNumber;
   
@@ -1492,7 +1492,7 @@ app.get('/api/users/phone/:phoneNumber', (req, res) => {
   }
 });
 
-// API endpoint to upload user avatar
+
 app.post('/api/users/:userId/avatar', upload.single('avatar'), (req, res) => {
   const userId = req.params.userId;
   const file = req.file;
@@ -1501,7 +1501,7 @@ app.post('/api/users/:userId/avatar', upload.single('avatar'), (req, res) => {
     return res.status(400).json({ error: 'No file uploaded' });
   }
   
-  // Update user avatar in the database
+
   db.run(
     "UPDATE users SET avatar = ? WHERE id = ?",
     [file.filename, userId],
@@ -1520,7 +1520,7 @@ app.post('/api/users/:userId/avatar', upload.single('avatar'), (req, res) => {
   );
 });
 
-// Group icon upload endpoint
+
 app.post('/api/groups/:groupId/icon', upload.single('icon'), (req, res) => {
   const groupId = req.params.groupId;
   const file = req.file;
@@ -1529,7 +1529,7 @@ app.post('/api/groups/:groupId/icon', upload.single('icon'), (req, res) => {
     return res.status(400).json({ error: 'No file uploaded' });
   }
   
-  // Update group icon in the database
+
   db.run(
     "UPDATE chats SET icon = ? WHERE id = ? AND type = 'group'",
     [file.filename, groupId],
@@ -1566,7 +1566,7 @@ app.delete('/api/chats/:chatId/:userId', (req, res) => {
         return res.status(403).json({ error: 'User not authorized to delete this chat' });
       }
       
-      // Check chat type
+     
       db.get(
         "SELECT type, created_by FROM chats WHERE id = ?",
         [chatId],
@@ -1581,8 +1581,7 @@ app.delete('/api/chats/:chatId/:userId', (req, res) => {
           }
           
           if (chat.type === 'group' && chat.created_by !== parseInt(userId)) {
-            // For groups, only the creator can delete the entire group
-            // Others can only leave the group
+            
             db.run(
               "DELETE FROM chat_participants WHERE chat_id = ? AND user_id = ?",
               [chatId, userId],
@@ -1597,7 +1596,7 @@ app.delete('/api/chats/:chatId/:userId', (req, res) => {
               }
             );
           } else {
-            // For individual chats or group creator, delete the entire chat
+            
             db.run(
               "DELETE FROM chats WHERE id = ?",
               [chatId],
@@ -1618,7 +1617,7 @@ app.delete('/api/chats/:chatId/:userId', (req, res) => {
   );
 });
 
-// QR code generation endpoint
+
 app.post('/api/qrcode', (req, res) => {
   const { text } = req.body;
   
@@ -1626,7 +1625,7 @@ app.post('/api/qrcode', (req, res) => {
     return res.status(400).json({ error: 'No text provided for QR code' });
   }
   
-  // Generate QR code
+ 
   QRCode.toDataURL(text, { errorCorrectionLevel: 'H' }, (err, url) => {
     if (err) {
       console.error('Error generating QR code:', err.message);
@@ -1640,7 +1639,7 @@ app.post('/api/qrcode', (req, res) => {
   });
 });
 
-// Graceful shutdown
+
 process.on('SIGINT', () => {
   console.log('\n🛑 Shutting down server...');
   db.close((err) => {
